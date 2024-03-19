@@ -33,12 +33,12 @@ __used __section("__versions") = {
 	{ 0xbc0b22e9, "param_array_ops" },
 	{ 0xd0da656b, "__stack_chk_fail" },
 	{ 0x33a21a09, "pv_ops" },
+	{ 0xbdfb6dbb, "__fentry__" },
 	{ 0x5b8239ca, "__x86_return_thunk" },
 	{ 0x92997ed8, "_printk" },
-	{ 0xbdfb6dbb, "__fentry__" },
 };
 
 MODULE_INFO(depends, "");
 
 
-MODULE_INFO(srcversion, "0A4F9B5D208B5E94F2BED0D");
+MODULE_INFO(srcversion, "3A59F356F460D54B85C777A");

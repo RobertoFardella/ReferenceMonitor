@@ -29,12 +29,9 @@ static const struct modversion_info ____versions[]
 __used __section("__versions") = {
 	{ 0x30ff7695, "module_layout" },
 	{ 0xf9418c06, "param_ops_int" },
-	{ 0x33a21a09, "pv_ops" },
 	{ 0x5b8239ca, "__x86_return_thunk" },
-	{ 0xa22a96f7, "current_task" },
 	{ 0x7cd8d75e, "page_offset_base" },
 	{ 0x87a21cb3, "__ubsan_handle_out_of_bounds" },
-	{ 0xd0da656b, "__stack_chk_fail" },
 	{ 0x92997ed8, "_printk" },
 	{ 0xbdfb6dbb, "__fentry__" },
 	{ 0xbc0b22e9, "param_array_ops" },
@@ -44,4 +41,4 @@ __used __section("__versions") = {
 MODULE_INFO(depends, "");
 
 
-MODULE_INFO(srcversion, "1BB8DBBEC8CE7C561EC8E2B");
+MODULE_INFO(srcversion, "692CA0BC16E7A040EEF08ED");

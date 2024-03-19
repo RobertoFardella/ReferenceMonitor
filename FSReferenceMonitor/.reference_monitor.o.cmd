@@ -1220,6 +1220,17 @@ deps_/home/zudel/Documents/ReferenceMonitor/FSReferenceMonitor/reference_monitor
     $(wildcard include/config/SECURITYFS) \
   include/linux/kernel_read_file.h \
   include/generated/uapi/linux/version.h \
+  include/linux/kprobes.h \
+    $(wildcard include/config/KPROBES_SANITY_TEST) \
+    $(wildcard include/config/OPTPROBES) \
+    $(wildcard include/config/KPROBES_ON_FTRACE) \
+  include/linux/freelist.h \
+  arch/x86/include/asm/kprobes.h \
+  include/asm-generic/kprobes.h \
+  arch/x86/include/asm/insn.h \
+  arch/x86/include/asm/inat.h \
+  arch/x86/include/asm/inat_types.h \
+  /home/zudel/Documents/ReferenceMonitor/FSReferenceMonitor/referenceMonitor.h \
 
 /home/zudel/Documents/ReferenceMonitor/FSReferenceMonitor/reference_monitor.o: $(deps_/home/zudel/Documents/ReferenceMonitor/FSReferenceMonitor/reference_monitor.o)
 
