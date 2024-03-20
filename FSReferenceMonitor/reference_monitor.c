@@ -4,8 +4,10 @@
 #include <linux/kernel.h>
 #include <linux/fs.h>
 #include <linux/kprobes.h>
+#include <linux/unistd.h> // Include per geteuid()
+#include <linux/cred.h>
+#include <linux/key.h>
 #include "referenceMonitor.h"
-
 
 
 MODULE_LICENSE("GPL");
@@ -16,14 +18,44 @@ MODULE_DESCRIPTION("my first module");
 
 static ref_mon rm;
 
+int check_password(char* pw){
+    int ret;
+    
+    return ret;
+}
 
+/*sys_switch_state: cambiamento dello stato del reference monitor*/
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-__SYSCALL_DEFINEx(1,_switch_state, enum rm_state, state){
+__SYSCALL_DEFINEx(2,_switch_state, enum rm_state, state, char*, pw){
 #else
-asmlinkage int sys_switch_state(enum state){
+asmlinkage int sys_switch_state(enum state, char* pw){
 #endif
+    const struct cred *cred = current_cred();
     printk(KERN_INFO "%s: system call switch state invocata correttamente con parametro %d", MODNAME, state);
-    //qui va inserito la protezione con pw del cambio di stato
+    /**
+     * changing the current state of the reference monitor requires that the thread that is running this operation needs 
+     * to be marked with effective-user-id set to root, and additionally the reconfiguration requires in input a password 
+     * that is reference-monitor specific. This means that the encrypted version of 
+     * the password is maintained at the level of the reference monitor architecture for performing the required checks.
+     *  
+    */
+   printk("effective-user-id del thread corrente: %d", cred->euid);
+   // Ottenere l'UID effettivo (euid) corrente
+    kuid_t current_euid = current_cred()->euid;
+   
+    if (!uid_eq(current_euid, GLOBAL_ROOT_UID)){ // Verifica se l'UID effettivo è root
+        printk(KERN_INFO "Solo l'UID effettivo root può cambiare lo stato.\n");
+        return -EPERM; // Restituisci errore di permesso negato
+    }
+
+    printk("privilegi sufficienti per cambiare lo stato (siamo user root)");
+
+   
+    if (!check_password(pw)) {  // Verifica della password (da implementare)
+        printk(KERN_INFO "Password non valida.\n");
+        return -EINVAL; // Restituisci errore di input non valido
+    }
+
     if(rm.state == state) {
         printk("lo stato inserito e' gia' quello corrente");
         return -1;
@@ -51,6 +83,7 @@ asmlinkage int sys_switch_state(enum state){
         printk(KERN_INFO "lo stato inserito non e' valido");
         break;
     }
+
     return rm.state;
 }
 
@@ -89,7 +122,9 @@ int init_module(void) {
 
 
     unsigned long ** sys_call_table;
-    
+    rm.state = OFF;//parto nello stato OFF
+
+
     if(systemcall_table!=0){
         cr0 = read_cr0();
         unprotect_memory();
@@ -102,7 +137,7 @@ int init_module(void) {
         return -1;
     }
 
-    rm.state = OFF;//parto nello stato OFF
+    
         return 0;
 
 }

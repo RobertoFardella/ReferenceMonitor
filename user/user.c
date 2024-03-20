@@ -8,7 +8,7 @@ int main(int argc, char** argv){
 	int syscall_index[5] = {134};
 	enum rm_state state;
 	state = ON;
-	ret = syscall(134,state);
+	ret = syscall(134,state,"ciao");
 	printf("il valore tornato dalla system call %d e': %d", syscall_index[0], ret);
 	return 0;
 }
