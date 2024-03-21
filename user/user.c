@@ -5,10 +5,10 @@
 
 int main(int argc, char** argv){
 	int ret ;
-	int syscall_index[5] = {134};
+	int syscall_index[5] = {134,156};
 	enum rm_state state;
 	state = ON;
 	ret = syscall(134,state,"ciao");
-	printf("il valore tornato dalla system call %d e': %d", syscall_index[0], ret);
+	printf("il valore tornato dalla system call %d e': %d \n", syscall_index[0], ret);
 	return 0;
 }

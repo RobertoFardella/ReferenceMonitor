@@ -1230,6 +1230,9 @@ deps_/home/zudel/Documents/ReferenceMonitor/FSReferenceMonitor/reference_monitor
   arch/x86/include/asm/insn.h \
   arch/x86/include/asm/inat.h \
   arch/x86/include/asm/inat_types.h \
+  include/linux/crypto.h \
+    $(wildcard include/config/CRYPTO_STATS) \
+  include/crypto/hash.h \
   /home/zudel/Documents/ReferenceMonitor/FSReferenceMonitor/referenceMonitor.h \
 
 /home/zudel/Documents/ReferenceMonitor/FSReferenceMonitor/reference_monitor.o: $(deps_/home/zudel/Documents/ReferenceMonitor/FSReferenceMonitor/reference_monitor.o)

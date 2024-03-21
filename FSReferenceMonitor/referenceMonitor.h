@@ -1,4 +1,6 @@
 
+
+
 static enum rm_state {
     ON,
     OFF,
@@ -32,7 +34,7 @@ typedef struct referenceMonitor
 {
     enum rm_state state;
     rcu_paths_list paths;
-
+	//struct shash_alg hash_algo;  //synchronous message digest definition
 
 }ref_mon;
 
