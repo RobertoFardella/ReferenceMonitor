@@ -1,1 +1,0 @@
-cmd_/home/zudel/Documents/ReferenceMonitor/FSReferenceMonitor/Module.symvers := sed 's/\.ko$$/\.o/' /home/zudel/Documents/ReferenceMonitor/FSReferenceMonitor/modules.order | scripts/mod/modpost -m -a  -o /home/zudel/Documents/ReferenceMonitor/FSReferenceMonitor/Module.symvers -e -i Module.symvers   -T -

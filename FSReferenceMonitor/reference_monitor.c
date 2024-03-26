@@ -7,6 +7,7 @@
 #include <linux/kprobes.h>
 #include <linux/unistd.h> // Include per geteuid()
 #include <linux/cred.h>
+#include <linux/kprobes.h>
 #include <linux/key.h>
 #include <linux/crypto.h>
 #include <crypto/hash.h>
@@ -14,26 +15,28 @@
 #include <linux/errno.h>
 #include "referenceMonitor.h"
 
-
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Roberto Fardella <roberto.fard@gmail.com>");
 MODULE_DESCRIPTION("my first module");
 
-#define MODNAME "REFERENCE-MONITOR"
-#define KEYRING "REFERENCE_MONITOR"
+
+#define MODNAME "reference_monitor"
+#define PERMS 0644
 #define SHA256_DIGEST_SIZE 16
+#define MAX_PW_SIZE 64
 #define KEY_DESC "my_password_key"
 static ref_mon rm;
-
+static struct task_struct *thread;
 #define FILE_PATH "./pw.txt" // Definisci il percorso del file
 
+#define target_func "do_sys_open" //you should modify this depending on the kernel version
 
 int write_to_file(char * content, size_t len) {
     struct file *file;
     int ret = 0;
 
     // Apre il file per la scrittura
-    file = filp_open(FILE_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    file = filp_open(FILE_PATH, O_WRONLY | O_CREAT | O_TRUNC, PERMS);
     if (IS_ERR(file)) {
         printk(KERN_ERR "Impossibile aprire il file per la scrittura\n");
         return -1;
@@ -59,7 +62,6 @@ int calculate_password_hash(const char *password, unsigned char* hash)
     struct shash_desc *desc;
     int ret = -ENOMEM;
     
-
     tfm = crypto_alloc_shash("sha256", 0, 0);
     if (IS_ERR(tfm))
         return PTR_ERR(tfm);
@@ -78,13 +80,8 @@ int calculate_password_hash(const char *password, unsigned char* hash)
     kfree(desc);
     crypto_free_shash(tfm);
 
-    
-
-
     return ret;
 }
-
-
 /*int check_password(char* pw){
     int ret;
     //int int crypto_register_ahash(struct ahash_alg *alg); e controparte int crypto_unregister_ahash(struct ahash_alg *alg);
@@ -98,25 +95,14 @@ int calculate_password_hash(const char *password, unsigned char* hash)
 
 /*sys_switch_state: cambiamento dello stato del reference monitor*/
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-__SYSCALL_DEFINEx(2,_switch_state, enum rm_state, state, char* , pw){
+__SYSCALL_DEFINEx(3,_switch_state, enum rm_state, state, char* , pw, size_t, size){
 #else
-asmlinkage int sys_switch_state(enum state, char*  pw){
+asmlinkage int sys_switch_state(enum state, char*  pw, size_t size){
 #endif
+    int ret;
     const struct cred *cred = current_cred();
         unsigned char * hash_digest = kmalloc(SHA256_DIGEST_SIZE*2 + 1, GFP_KERNEL); // GFP_KERNEL specifica che l'allocazione avviene in contesto di kernel
-    printk(KERN_INFO "%s: system call switch state invocata correttamente", MODNAME);
-
-    /**
-     * changing the current state of the reference monitor requires that the thread that is running this operation needs 
-     * to be marked with effective-user-id set to root, and additionally the reconfiguration requires in input a password 
-     * that is reference-monitor specific. This means that the encrypted version of 
-     * the password is maintained at the level of the reference monitor architecture for performing the required checks.
-     *  
-    */
-   printk("effective-user-id del thread corrente: %d", cred->euid);
-
-   // Ottenere l'UID effettivo (euid) corrente
-   //kuid_t current_euid = current_cred()->euid;
+    printk(KERN_INFO "%s: system call switch state invocata correttamente con parametri state %d, pw %s, taglia %d", MODNAME, state, pw, (int)size);
    
    
     if (!uid_eq(cred->euid, GLOBAL_ROOT_UID)){ // Verifica se l'UID effettivo è root
@@ -124,11 +110,24 @@ asmlinkage int sys_switch_state(enum state, char*  pw){
         return -EPERM; // Restituisci errore di permesso negato
     }
 
-    char* pw_buffer = (char*)kmalloc(sizeof(70), GFP_KERNEL);
-    __copy_from_user(pw_buffer, pw, 4);
-    printk("il valore preso dal buffer user e messo in quello kernel e': %s", pw_buffer);
+	
+    char pw_buffer[MAX_PW_SIZE];
+    void *addr;
+    if(size >= (MAX_PW_SIZE -1)) return -EINVAL;
+
+    addr = (void*)get_zeroed_page(GFP_KERNEL);
+    
+    if (addr == NULL) return -ENOMEM;
+
+    ret = copy_from_user((char*)addr, pw, (int) size);
+    
+    memcpy(pw_buffer,(char*)addr,size-ret);
+    
+    pw_buffer[size - ret] = '\0';
+    free_pages((unsigned long)addr,0);
+
     if (calculate_password_hash(pw_buffer, hash_digest)  < 0) {  // Verifica della password (da implementare)
-        printk(KERN_INFO "Password non valida.\n");
+        printk(KERN_INFO "%s: Password non valida.\n", MODNAME);
         return -EINVAL; // Restituisci errore di input non valido
     }
         int i, offset = 0;
@@ -137,6 +136,7 @@ asmlinkage int sys_switch_state(enum state, char*  pw){
     for (i = 0; i < SHA256_DIGEST_SIZE; i++) {
         offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%02x", hash_digest[i]); // Formattare due caratteri esadecimali per ogni byte
     }
+
     buffer[offset] = '\0'; // Aggiungi il terminatore di stringa
     printk(KERN_INFO "\nHash della password formattato :  %s", buffer);
 
@@ -167,9 +167,8 @@ asmlinkage int sys_switch_state(enum state, char*  pw){
         return ret;
     }*/
 
-    printk(KERN_INFO "Password hash key created\n");
+    printk(KERN_INFO "%s: Password hash key created\n", MODNAME);
  
-
     if(rm.state == state) {
         printk("lo stato inserito e' gia' quello corrente");
         return -1;
@@ -201,10 +200,34 @@ asmlinkage int sys_switch_state(enum state, char*  pw){
     return rm.state;
 }
 
+/*sys_add_or_remove_link: aggiunta o rimozione del path all'insieme da protezioni aperture in modalità scrittura*/
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
+__SYSCALL_DEFINEx(1,_add_or_remove_link, char*, path){
+#else
+asmlinkage int sys_add_or_remove_link(char* path){
+#endif
+    
+    int ret;
+    const struct cred *cred = current_cred();
+    printk(KERN_INFO "%s: system call sys_add_or_remove_link invocata correttamente con parametro %s ", MODNAME, path);
+    if(rm.state == OFF || rm.state == ON){
+        printk("%s: passare allo stato di REC-ON oppure REC-OFF per poter eseguire l'attivita' di inserimento/eliminazione del path", MODNAME);
+        return -EPERM;
+        
+    }
+    
+    if (!uid_eq(cred->euid, GLOBAL_ROOT_UID)){ // Verifica se l'UID effettivo è root
+        printk(KERN_INFO "Solo l'UID effettivo root può eseguire l'attivita' di inserimento/eliminazione del path.\n");
+        return -EPERM; // Restituisci errore di permesso negato
+    }
+    printk("stringa passata: %s", path);
+    return 0;
+}
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
 static unsigned long sys_switch_state = (unsigned long) __x64_sys_switch_state;	
+static unsigned long sys_add_or_remove_link = (unsigned long) __x64_sys_add_or_remove_link;	
 #endif
-
 
 unsigned long systemcall_table=0x0;
 module_param(systemcall_table,ulong,0660);
@@ -229,14 +252,26 @@ static inline void protect_memory(void){
 static inline void unprotect_memory(void){
     write_cr0_forced(cr0 & ~X86_CR0_WP);
 }
+
+static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
+    printk(KERN_INFO "%s: DIO", MODNAME);
+    return 0;
+}
+
 unsigned long * nisyscall;
+
+static struct kprobe kp = {
+        .symbol_name =  target_func,
+        .pre_handler = sys_open_wrapper,
+};
+
 
 // INIT MODULE
 int init_module(void) {
-
-
     unsigned long ** sys_call_table;
+    int ret = 0;
     rm.state = OFF;//parto nello stato OFF
+    
 
     if(systemcall_table!=0){
         cr0 = read_cr0();
@@ -244,14 +279,23 @@ int init_module(void) {
         sys_call_table = (void*) systemcall_table; 
         nisyscall = sys_call_table[free_entries[0]]; //mi serve poi nel cleanup
         sys_call_table[free_entries[0]] = (unsigned long*)sys_switch_state;
+        sys_call_table[free_entries[1]] = (unsigned long*)sys_add_or_remove_link;
         protect_memory();
     }else{
+
         printk(KERN_INFO "%s: system call table non trovata\n", MODNAME);
         return -1;
+        
     }
-
+    ret = register_kprobe(&kp);
+        if (ret < 0) {
+                printk("%s: kprobe registering failed, returned %d\n",MODNAME,ret);
+                return ret;
+        }
+    
+        //rcu_list_init(&list, thread);
         printk(KERN_INFO "%s: module correctly mounted", MODNAME);    
-        return 0;
+        return ret;
 
 }
 
@@ -259,13 +303,23 @@ int init_module(void) {
 void cleanup_module(void) {
         
     unsigned long ** sys_call_table;
+
+    /*restore system call table*/
     cr0 = read_cr0();
     unprotect_memory();
     sys_call_table = (void*) systemcall_table; 
     sys_call_table[free_entries[0]] = nisyscall;
-    protect_memory();                  
+    sys_call_table[free_entries[1]] = nisyscall;
+    protect_memory();   
+
+    unregister_kprobe(&kp);       
+
+    /*stopping kernel thread that handles the rcu list*/
+    /*if (thread) {
+        kthread_stop(thread);
+        printk(KERN_INFO "%s: dameon thread stopped", MODNAME);  
+    }    */    
 
     printk("%s: shutting down\n",MODNAME);
 
 }
-
