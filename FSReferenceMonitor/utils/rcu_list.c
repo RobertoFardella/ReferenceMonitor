@@ -9,7 +9,6 @@ int  house_keeper(void * the_list);
 void rcu_list_init(rcu_list * l, struct task_struct *thread){
 
 	int i;
-
 	l->epoch = 0x0;
 	l->next_epoch_index = 0x1;
 	for(i=0;i<EPOCHS;i++){
@@ -18,18 +17,16 @@ void rcu_list_init(rcu_list * l, struct task_struct *thread){
 
 	l->head = NULL;
         
-	rcu_list *the_list = NULL; // Aggiungi la lista necessaria per il thread
-
+	printk(KERN_INFO "%s: daemon thread sta eseguendo house_keeper");
     // Creazione del nuovo thread kernel
-    thread = kthread_run(house_keeper, (void *)the_list, "house_keeper_thread");
+    thread = kthread_create(house_keeper, (void *)l, "house_keeper_thread");
     if (IS_ERR(thread)) {
         printk(KERN_ERR "Errore durante la creazione del thread house_keeper\n");
         return ;
     }
-  
+	wake_up_process(thread);
 
 }
-
 
 int rcu_list_search(rcu_list *l, long key){
 
@@ -137,9 +134,7 @@ int rcu_list_remove(rcu_list *l, long key){
 
 	last_epoch = __atomic_exchange_n (&(l->epoch), updated_epoch, __ATOMIC_SEQ_CST); 
 	index = (last_epoch & MASK) ? 1 : 0; 
-	grace_period_threads = last_epoch & (~MASK); 
-
-	
+	grace_period_threads = last_epoch & (~MASK); 	
 	printk("deletion: waiting grace-full period (target value is %d)\n",grace_period_threads);
 	while(l->standing[index] < grace_period_threads);
 	l->standing[index] = 0;
@@ -169,11 +164,11 @@ int  house_keeper(void * the_list){
 redo:
 
 	//pthread_spin_lock(&l->write_lock);
-	
+	spin_lock(&(l->write_lock));
 	updated_epoch = (l->next_epoch_index) ? MASK : 0;
-	printk("next epoch index is %d - next epoch is %p\n",l->next_epoch_index,updated_epoch);
+	//printk(KERN_INFO "next epoch index is %d - next epoch is %p\n",l->next_epoch_index,updated_epoch);
 
-    	l->next_epoch_index += 1;
+    l->next_epoch_index += 1;
 	l->next_epoch_index %= 2;	
 
 	last_epoch = __atomic_exchange_n (&(l->epoch), updated_epoch, __ATOMIC_SEQ_CST); 
@@ -181,10 +176,10 @@ redo:
 	grace_period_threads = last_epoch & (~MASK); 
 
 	
-	printk("house keeping: waiting grace-full period (target value is %d)\n",grace_period_threads);
+	//printk(KERN_INFO "house keeping: waiting grace-full period (target value is %d)\n",grace_period_threads);
 	while(l->standing[index] < grace_period_threads);
 	l->standing[index] = 0;
-
+	spin_unlock(&(l->write_lock));
 	//pthread_spin_unlock(&l->write_lock);
 
 	goto redo;

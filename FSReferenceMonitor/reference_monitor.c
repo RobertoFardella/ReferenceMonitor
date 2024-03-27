@@ -25,7 +25,7 @@ MODULE_DESCRIPTION("my first module");
 #define SHA256_DIGEST_SIZE 16
 #define MAX_PW_SIZE 64
 #define KEY_DESC "my_password_key"
-static ref_mon rm;
+static ref_mon *rm;
 static struct task_struct *thread;
 #define FILE_PATH "./pw.txt" // Definisci il percorso del file
 
@@ -169,7 +169,7 @@ asmlinkage int sys_switch_state(enum state, char*  pw, size_t size){
 
     printk(KERN_INFO "%s: Password hash key created\n", MODNAME);
  
-    if(rm.state == state) {
+    if(rm->state == state) {
         printk("lo stato inserito e' gia' quello corrente");
         return -1;
     }
@@ -178,26 +178,26 @@ asmlinkage int sys_switch_state(enum state, char*  pw, size_t size){
     {
       case ON:
         printk(KERN_INFO  "lo stato inserito e' ON");
-        rm.state = ON;
+        rm->state = ON;
         break;
     case OFF:
         printk(KERN_INFO  "lo stato inserito e' OFF");
-        rm.state = OFF;
+        rm->state = OFF;
         break;
     case REC_ON:
         printk(KERN_INFO  "lo stato inserito e' REC_ON");
-        rm.state = REC_ON;
+        rm->state = REC_ON;
         break;
     case REC_OFF:    
         printk(KERN_INFO "lo stato inserito e' REC_OFF");
-        rm.state = REC_OFF;
+        rm->state = REC_OFF;
         break;
     default:
         printk(KERN_INFO "lo stato inserito non e' valido");
         break;
     }
 
-    return rm.state;
+    return rm->state;
 }
 
 /*sys_add_or_remove_link: aggiunta o rimozione del path all'insieme da protezioni aperture in modalità scrittura*/
@@ -206,14 +206,13 @@ __SYSCALL_DEFINEx(1,_add_or_remove_link, char*, path){
 #else
 asmlinkage int sys_add_or_remove_link(char* path){
 #endif
-    
+
     int ret;
     const struct cred *cred = current_cred();
     printk(KERN_INFO "%s: system call sys_add_or_remove_link invocata correttamente con parametro %s ", MODNAME, path);
-    if(rm.state == OFF || rm.state == ON){
+    if(rm->state == OFF || rm->state == ON){
         printk("%s: passare allo stato di REC-ON oppure REC-OFF per poter eseguire l'attivita' di inserimento/eliminazione del path", MODNAME);
-        return -EPERM;
-        
+        return -EPERM;    
     }
     
     if (!uid_eq(cred->euid, GLOBAL_ROOT_UID)){ // Verifica se l'UID effettivo è root
@@ -254,25 +253,24 @@ static inline void unprotect_memory(void){
 }
 
 static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
-    printk(KERN_INFO "%s: DIO", MODNAME);
+    
     return 0;
 }
 
 unsigned long * nisyscall;
-
 static struct kprobe kp = {
         .symbol_name =  target_func,
         .pre_handler = sys_open_wrapper,
 };
 
-
 // INIT MODULE
 int init_module(void) {
     unsigned long ** sys_call_table;
     int ret = 0;
-    rm.state = OFF;//parto nello stato OFF
-    
 
+    rm = kmalloc(sizeof(ref_mon), GFP_KERNEL);
+    rm->state = OFF;//parto nello stato OFF
+    
     if(systemcall_table!=0){
         cr0 = read_cr0();
         unprotect_memory();
@@ -287,18 +285,24 @@ int init_module(void) {
         return -1;
         
     }
+    rm->paths = kmalloc(sizeof(struct _rcu__paths_list), GFP_KERNEL);
+    if(rm->paths == NULL){
+        printk(KERN_INFO "ciao2");
+        return -1;
+    }
+    
+    rcu_list_init(rm->paths, thread);
     ret = register_kprobe(&kp);
         if (ret < 0) {
                 printk("%s: kprobe registering failed, returned %d\n",MODNAME,ret);
                 return ret;
         }
     
-        //rcu_list_init(&list, thread);
+    
         printk(KERN_INFO "%s: module correctly mounted", MODNAME);    
         return ret;
 
 }
-
 
 void cleanup_module(void) {
         
@@ -315,10 +319,10 @@ void cleanup_module(void) {
     unregister_kprobe(&kp);       
 
     /*stopping kernel thread that handles the rcu list*/
-    /*if (thread) {
+    if (thread) {
         kthread_stop(thread);
         printk(KERN_INFO "%s: dameon thread stopped", MODNAME);  
-    }    */    
+    }   
 
     printk("%s: shutting down\n",MODNAME);
 

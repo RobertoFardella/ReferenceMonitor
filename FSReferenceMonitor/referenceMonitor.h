@@ -44,7 +44,7 @@ extern int rcu_list_remove(rcu_list *l, long key);
 typedef struct referenceMonitor
 {
     enum rm_state state;
-    rcu_list paths;
+    rcu_list *paths;
 	//struct shash_alg hash_algo;  //synchronous message digest definition
 
 }ref_mon;
