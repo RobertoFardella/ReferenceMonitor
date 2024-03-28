@@ -1,0 +1,1 @@
+cmd_/home/zudel/Downloads/ReferenceMonitor/Linux-sys_call_table-discoverer/Module.symvers := sed 's/\.ko$$/\.o/' /home/zudel/Downloads/ReferenceMonitor/Linux-sys_call_table-discoverer/modules.order | scripts/mod/modpost -m -a  -o /home/zudel/Downloads/ReferenceMonitor/Linux-sys_call_table-discoverer/Module.symvers -e -i Module.symvers   -T -

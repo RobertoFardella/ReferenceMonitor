@@ -14,9 +14,9 @@ static enum rm_state {
 #define EPOCHS (2)
 
 typedef struct _node{
-    struct list_head* list;
+    struct list_head list;
     unsigned long key;
-}node;
+} node;
 
 typedef struct _rcu__paths_list{
 	unsigned long standing[EPOCHS];	//you can further optimize putting these values

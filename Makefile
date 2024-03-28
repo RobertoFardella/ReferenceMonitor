@@ -12,3 +12,5 @@ insmod:
 rmmod:
 	sudo make -f FSReferenceMonitor/Makefile remote-rmmod
 	sudo make -f Linux-sys_call_table-discoverer/Makefile remote-rmmod
+test:
+	sudo make -f user/Makefile all

@@ -202,14 +202,18 @@ asmlinkage int sys_switch_state(enum state, char*  pw, size_t size){
 
 /*sys_add_or_remove_link: aggiunta o rimozione del path all'insieme da protezioni aperture in modalità scrittura*/
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-__SYSCALL_DEFINEx(2,_add_or_remove_link, char*, path, int, add){
+__SYSCALL_DEFINEx(2,_manage_link, char*, path, int, op){
 #else
-asmlinkage int sys_add_or_remove_link(char* path,int add){
+asmlinkage int sys_manage_link(char* path,int op){
 #endif
 
     int ret;
+    node * node_ptr ;
+    struct list_head* new_node;
+    struct list_head *ptr;
     const struct cred *cred = current_cred();
-    printk(KERN_INFO "%s: system call sys_add_or_remove_link invocata correttamente con parametro %s ", MODNAME, path);
+    
+    printk(KERN_INFO "%s: system call sys_manage_link invocata correttamente con parametri %s %d ", MODNAME, path, op);
     if(rm->state == OFF || rm->state == ON){
         printk("%s: passare allo stato di REC-ON oppure REC-OFF per poter eseguire l'attivita' di inserimento/eliminazione del path", MODNAME);
         return -EPERM;    
@@ -219,51 +223,65 @@ asmlinkage int sys_add_or_remove_link(char* path,int add){
         printk(KERN_INFO "Solo l'UID effettivo root può eseguire l'attivita' di inserimento/eliminazione del path.\n");
         return -EPERM; // Restituisci errore di permesso negato
     }
-    rm->paths.list = kmalloc(sizeof(struct list_head), GFP_KERNEL);
-    INIT_LIST_HEAD(rm->paths.list);
     
-    if(add){ //path da aggiungere alla lista
+    
+    if(op == 0){ //path da aggiungere alla lista
             spin_lock(&lock);
-            // Allocazione di memoria per un nuovo nodo
-            struct list_head* new_node;
+            
+            
             new_node = kmalloc(sizeof(struct list_head),GFP_KERNEL);
             if (new_node == NULL) {
                 printk("allocation of new node into the list failed/n");
                 return -ENOMEM;
             }
-            // Aggiunta del nuovo nodo alla lista
-            list_add_tail(new_node, rm->paths.list);
-            
-            
-            struct list_head *ptr;
-            for (ptr = rm->paths.list->next; ptr != &rm->paths.list ; ptr = ptr->next) {
-                printk("%s: nodo  %p  \n", MODNAME, rm->paths.list->next);
-                
-            
-         }
+           
+            list_add_tail(new_node, &rm->paths.list);  // Aggiunta del nuovo nodo alla lista
 
+            
             spin_unlock(&lock);
         
     }
-
-    else{ //path da rimuovere dalla lista
-        if(list_empty(rm->paths.list)){
+    else if(op == 1){ //path da rimuovere dalla lista
+        if(list_empty(&rm->paths.list)){
             printk("%s: the set of paths to protect is empty \n", MODNAME);
             return -EFAULT;
         }
-        
-         
+
+        list_for_each(ptr, &rm->paths.list) {
+            node_ptr = list_entry(ptr, node, list); //utilizza internamente container_of()
+            if(node_ptr->key == 0){ //qui andrebbe il path dato dall'utente
+                list_del(ptr);
+                printk("%s: path removed correctly \n", MODNAME);
+                goto ok;
+            }           
+        }
+        printk("%s: path to remove not found \n", MODNAME);
+        return -EINVAL;
 
     }
-    
-    
+    else{ //visualizzo la lista dei path da proteggere da
+        if(list_empty(&rm->paths.list)){
+            printk("%s: the set of paths to protect is empty \n", MODNAME);
+            return -EFAULT;
+        }
+
+        printk("%s: lista dei path che non sono accessibili in scrittura", MODNAME);
+
+        list_for_each(ptr, &rm->paths.list) {
+            node_ptr = list_entry(ptr, node, list); //utilizza internamente container_of()
+                       
+            printk(KERN_ALERT "(list %p, value %ld, prev = %p, next = %p) \n",ptr,node_ptr->key, ptr->prev, ptr->next); 
+                        
+        }
+    }
+ok:
     return 0;
 
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
 static unsigned long sys_switch_state = (unsigned long) __x64_sys_switch_state;	
-static unsigned long sys_add_or_remove_link = (unsigned long) __x64_sys_add_or_remove_link;	
+static unsigned long sys_manage_link = (unsigned long) __x64_sys_manage_link;	
 #endif
 
 unsigned long systemcall_table=0x0;
@@ -307,8 +325,8 @@ static struct kprobe kp = {
 int init_module(void) {
     unsigned long ** sys_call_table;
     int ret = 0;
-    rm = (ref_mon*) kmalloc(sizeof(ref_mon), GFP_KERNEL);
-    
+    rm =  kmalloc(sizeof(ref_mon), GFP_KERNEL);
+    INIT_LIST_HEAD(&rm->paths.list); //inizializzo la struttura list_head in rm
     rm->state = REC_ON;//parto nello stato OFF
     //if(!try_module_get(THIS_MODULE)) return -1;
     if(systemcall_table!=0){
@@ -317,7 +335,7 @@ int init_module(void) {
         sys_call_table = (void*) systemcall_table; 
         nisyscall = sys_call_table[free_entries[0]]; //mi serve poi nel cleanup
         sys_call_table[free_entries[0]] = (unsigned long*)sys_switch_state;
-        sys_call_table[free_entries[1]] = (unsigned long*)sys_add_or_remove_link;
+        sys_call_table[free_entries[1]] = (unsigned long*)sys_manage_link;
         protect_memory();
     }else{
         printk("%s: system call table non trovata\n", MODNAME);
