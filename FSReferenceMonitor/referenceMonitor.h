@@ -13,12 +13,10 @@ static enum rm_state {
 #endif
 #define EPOCHS (2)
 
-typedef struct _node
-{
-	struct _node * next;
-	long key; //dovrei metterci l'inode o il path?
-} node;
-
+typedef struct _node{
+    struct list_head* list;
+    unsigned long key;
+}node;
 
 typedef struct _rcu__paths_list{
 	unsigned long standing[EPOCHS];	//you can further optimize putting these values
@@ -26,7 +24,7 @@ typedef struct _rcu__paths_list{
 	unsigned long epoch; //a different cache line for this can also help
 	int next_epoch_index;
 	spinlock_t write_lock;
-	node *head;
+
 } __attribute__((packed)) rcu_list;
 
 typedef rcu_list  __attribute__((aligned(64)));
@@ -44,7 +42,7 @@ extern int rcu_list_remove(rcu_list *l, long key);
 typedef struct referenceMonitor
 {
     enum rm_state state;
-    rcu_list *paths;
+     node paths;
 	//struct shash_alg hash_algo;  //synchronous message digest definition
 
 }ref_mon;

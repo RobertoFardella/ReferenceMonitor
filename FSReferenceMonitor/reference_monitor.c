@@ -3,6 +3,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/fs.h>
+#include <linux/list.h>
 #include <linux/uaccess.h>
 #include <linux/kprobes.h>
 #include <linux/unistd.h> // Include per geteuid()
@@ -19,7 +20,6 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Roberto Fardella <roberto.fard@gmail.com>");
 MODULE_DESCRIPTION("my first module");
 
-
 #define MODNAME "reference_monitor"
 #define PERMS 0644
 #define SHA256_DIGEST_SIZE 16
@@ -27,6 +27,7 @@ MODULE_DESCRIPTION("my first module");
 #define KEY_DESC "my_password_key"
 static ref_mon *rm;
 static struct task_struct *thread;
+static spinlock_t lock;
 #define FILE_PATH "./pw.txt" // Definisci il percorso del file
 
 #define target_func "do_sys_open" //you should modify this depending on the kernel version
@@ -53,7 +54,6 @@ int write_to_file(char * content, size_t len) {
 
     return ret;
 }
-
 
 // Funzione per calcolare l'hash della password
 int calculate_password_hash(const char *password, unsigned char* hash)
@@ -202,9 +202,9 @@ asmlinkage int sys_switch_state(enum state, char*  pw, size_t size){
 
 /*sys_add_or_remove_link: aggiunta o rimozione del path all'insieme da protezioni aperture in modalità scrittura*/
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-__SYSCALL_DEFINEx(1,_add_or_remove_link, char*, path){
+__SYSCALL_DEFINEx(2,_add_or_remove_link, char*, path, int, add){
 #else
-asmlinkage int sys_add_or_remove_link(char* path){
+asmlinkage int sys_add_or_remove_link(char* path,int add){
 #endif
 
     int ret;
@@ -219,8 +219,46 @@ asmlinkage int sys_add_or_remove_link(char* path){
         printk(KERN_INFO "Solo l'UID effettivo root può eseguire l'attivita' di inserimento/eliminazione del path.\n");
         return -EPERM; // Restituisci errore di permesso negato
     }
-    printk("stringa passata: %s", path);
+    rm->paths.list = kmalloc(sizeof(struct list_head), GFP_KERNEL);
+    INIT_LIST_HEAD(rm->paths.list);
+    
+    if(add){ //path da aggiungere alla lista
+            spin_lock(&lock);
+            // Allocazione di memoria per un nuovo nodo
+            struct list_head* new_node;
+            new_node = kmalloc(sizeof(struct list_head),GFP_KERNEL);
+            if (new_node == NULL) {
+                printk("allocation of new node into the list failed/n");
+                return -ENOMEM;
+            }
+            // Aggiunta del nuovo nodo alla lista
+            list_add_tail(new_node, rm->paths.list);
+            
+            
+            struct list_head *ptr;
+            for (ptr = rm->paths.list->next; ptr != &rm->paths.list ; ptr = ptr->next) {
+                printk("%s: nodo  %p  \n", MODNAME, rm->paths.list->next);
+                
+            
+         }
+
+            spin_unlock(&lock);
+        
+    }
+
+    else{ //path da rimuovere dalla lista
+        if(list_empty(rm->paths.list)){
+            printk("%s: the set of paths to protect is empty \n", MODNAME);
+            return -EFAULT;
+        }
+        
+         
+
+    }
+    
+    
     return 0;
+
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
@@ -253,7 +291,9 @@ static inline void unprotect_memory(void){
 }
 
 static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
-    
+    if(rm->state == OFF || rm->state == REC_OFF){
+        return rm->state;
+    }
     return 0;
 }
 
@@ -267,10 +307,10 @@ static struct kprobe kp = {
 int init_module(void) {
     unsigned long ** sys_call_table;
     int ret = 0;
-
-    rm = kmalloc(sizeof(ref_mon), GFP_KERNEL);
-    rm->state = OFF;//parto nello stato OFF
+    rm = (ref_mon*) kmalloc(sizeof(ref_mon), GFP_KERNEL);
     
+    rm->state = REC_ON;//parto nello stato OFF
+    //if(!try_module_get(THIS_MODULE)) return -1;
     if(systemcall_table!=0){
         cr0 = read_cr0();
         unprotect_memory();
@@ -280,18 +320,10 @@ int init_module(void) {
         sys_call_table[free_entries[1]] = (unsigned long*)sys_add_or_remove_link;
         protect_memory();
     }else{
+        printk("%s: system call table non trovata\n", MODNAME);
+        return -1;
+    }
 
-        printk(KERN_INFO "%s: system call table non trovata\n", MODNAME);
-        return -1;
-        
-    }
-    rm->paths = kmalloc(sizeof(struct _rcu__paths_list), GFP_KERNEL);
-    if(rm->paths == NULL){
-        printk(KERN_INFO "ciao2");
-        return -1;
-    }
-    
-    rcu_list_init(rm->paths, thread);
     ret = register_kprobe(&kp);
         if (ret < 0) {
                 printk("%s: kprobe registering failed, returned %d\n",MODNAME,ret);
@@ -299,14 +331,15 @@ int init_module(void) {
         }
     
     
-        printk(KERN_INFO "%s: module correctly mounted", MODNAME);    
+        printk("%s: module correctly mounted\n", MODNAME);    
         return ret;
 
 }
 
 void cleanup_module(void) {
-        
+    int ret;
     unsigned long ** sys_call_table;
+    //module_put(THIS_MODULE);
 
     /*restore system call table*/
     cr0 = read_cr0();
@@ -316,13 +349,8 @@ void cleanup_module(void) {
     sys_call_table[free_entries[1]] = nisyscall;
     protect_memory();   
 
-    unregister_kprobe(&kp);       
-
-    /*stopping kernel thread that handles the rcu list*/
-    if (thread) {
-        kthread_stop(thread);
-        printk(KERN_INFO "%s: dameon thread stopped", MODNAME);  
-    }   
+    unregister_kprobe(&kp); 
+    kfree(rm);
 
     printk("%s: shutting down\n",MODNAME);
 

@@ -75,8 +75,8 @@ int rcu_list_insert(rcu_list *l, long key){
 	
 	printk("insertion: waiting for lock\n");
 
-	//pthread_spin_lock(&(l->write_lock));
-
+ 	spin_lock(&(l->write_lock));
+	
 	//traverse and insert
 	p->next = l->head;
 	asm volatile("mfence");
@@ -89,7 +89,7 @@ int rcu_list_insert(rcu_list *l, long key){
 		p = p->next;
 	}
 
-	//pthread_spin_unlock(&l->write_lock);
+	spin_unlock(&(l->write_lock));
 	
 	return 1;
 
@@ -105,7 +105,7 @@ int rcu_list_remove(rcu_list *l, long key){
 	int index;
 	
 
-	//pthread_spin_lock(&l->write_lock);
+	spin_lock(&(l->write_lock));
 
 	//traverse and delete
 	p = l->head;
@@ -139,7 +139,8 @@ int rcu_list_remove(rcu_list *l, long key){
 	while(l->standing[index] < grace_period_threads);
 	l->standing[index] = 0;
 	
-	//pthread_spin_unlock(&l->write_lock);
+	spin_unlock(&(l->write_lock));
+	
 
 	if(removed){
 		kfree(removed);
@@ -163,7 +164,7 @@ int  house_keeper(void * the_list){
 
 redo:
 
-	//pthread_spin_lock(&l->write_lock);
+	
 	spin_lock(&(l->write_lock));
 	updated_epoch = (l->next_epoch_index) ? MASK : 0;
 	//printk(KERN_INFO "next epoch index is %d - next epoch is %p\n",l->next_epoch_index,updated_epoch);
@@ -179,8 +180,9 @@ redo:
 	//printk(KERN_INFO "house keeping: waiting grace-full period (target value is %d)\n",grace_period_threads);
 	while(l->standing[index] < grace_period_threads);
 	l->standing[index] = 0;
+	
 	spin_unlock(&(l->write_lock));
-	//pthread_spin_unlock(&l->write_lock);
+
 
 	goto redo;
 
