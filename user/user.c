@@ -3,6 +3,11 @@
 #include <syscall.h>
 #include <string.h>
 
+/**
+comando df o lsblk per visualizzare i filesystem
+coon cat /proc/filesystems vedo quelli che sono supportati dal mio kernel
+*/
+
 int main(int argc, char** argv){
 
 	/*if(argc < 2){
@@ -25,3 +30,4 @@ int main(int argc, char** argv){
 
 	return 0;
 }
+

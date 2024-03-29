@@ -321,7 +321,7 @@ static struct kprobe kp = {
         .pre_handler = sys_open_wrapper,
 };
 
-// INIT MODULE
+
 int init_module(void) {
     unsigned long ** sys_call_table;
     int ret = 0;
@@ -341,13 +341,13 @@ int init_module(void) {
         printk("%s: system call table non trovata\n", MODNAME);
         return -1;
     }
-
+    
+    //register kprobe
     ret = register_kprobe(&kp);
         if (ret < 0) {
-                printk("%s: kprobe registering failed, returned %d\n",MODNAME,ret);
+                printk("%s: kprobe registering failed, returned %d \n",MODNAME,ret);
                 return ret;
         }
-    
     
         printk("%s: module correctly mounted\n", MODNAME);    
         return ret;
@@ -367,7 +367,10 @@ void cleanup_module(void) {
     sys_call_table[free_entries[1]] = nisyscall;
     protect_memory();   
 
+    
+    //unregister kprobe
     unregister_kprobe(&kp); 
+    
     kfree(rm);
 
     printk("%s: shutting down\n",MODNAME);
