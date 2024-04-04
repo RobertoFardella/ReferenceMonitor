@@ -17,6 +17,7 @@ static enum rm_state {
 typedef struct _node{
     struct list_head list;
     char* path;
+	unsigned long inode_cod;
 } node;
 
 typedef struct _rcu__paths_list{

@@ -23,7 +23,7 @@ MODULE_DESCRIPTION("my first module");
 #define MAX_PW_SIZE 64
 #define KEY_DESC "my_password_key"
 #define FILE_PATH "./pw.txt" // Definisci il percorso del file
-#define target_func "do_sys_open" //you should modify this depending on the kernel version
+#define target_func "filp_open" //you should modify this depending on the kernel version
 
 static ref_mon *rm;
 static struct kretprobe retprobe;
@@ -142,6 +142,8 @@ asmlinkage int sys_manage_link(char* path,int op){
     struct file *file;
     int  nbytes;
     loff_t offset;
+    struct inode *inode;
+    struct path path;
     
     printk(KERN_INFO "%s: system call sys_manage_link invocata correttamente con parametri %s %d ", MODNAME, path, op);
     if(rm->state == OFF || rm->state == ON){
@@ -154,7 +156,6 @@ asmlinkage int sys_manage_link(char* path,int op){
         return -EPERM; // Restituisci errore di permesso negato
     }
     
-    
     if(op == 0){ //path da aggiungere alla lista
             spin_lock(&lock);
             new_node = kmalloc(sizeof(struct list_head),GFP_KERNEL);
@@ -163,7 +164,10 @@ asmlinkage int sys_manage_link(char* path,int op){
                 return -ENOMEM;
             }
             node_ptr = list_entry(new_node, node, list); 
-            node_ptr->path = path;
+            node_ptr->path = pathname;
+            kern_path(pathname, LOOKUP_FOLLOW , &path );
+            inode =  path.dentry->d_inode;
+            node_ptr->inode_cod = inode->i_ino;
             spin_lock(&lock);
             list_add_tail(new_node, &rm->paths.list);  // Aggiunta del nuovo nodo alla lista
             spin_unlock(&lock);
@@ -200,7 +204,7 @@ asmlinkage int sys_manage_link(char* path,int op){
         list_for_each(ptr, &rm->paths.list) {
             node_ptr = list_entry(ptr, node, list); //utilizza internamente container_of()
                        
-            printk(KERN_ALERT "(list %p, value %s, prev = %p, next = %p) \n",ptr,node_ptr->path, ptr->prev, ptr->next); 
+            printk(KERN_ALERT "(list %p, value %lu, path %s, prev = %p, next = %p) \n",ptr, filp->f_dentry->d_inode->i_ino, ptr->path, ptr->prev, ptr->next); 
                         
         }
     }
@@ -241,17 +245,27 @@ static inline void unprotect_memory(void){
 
 static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
         //where to look at when searching system call parmeters
-    if(rm->state == ON || rm->state == OFF) return 1;
-    
-    /*list_for_each(ptr, &rm->paths.list) {
-            node_ptr = list_entry(ptr, node, list);
-            if(strcmp("c", node_ptr->path) == 0){ //qui va o il codice inode o il path, dove lo prendo??
-                printk("filp_open \n ");
-                write_to_file("file test in utils aperto", "./test.txt");
-                return 0;
-            }
-    }*/
+     struct file * filp;
+     unsigned long inode_id;
+    if(rm->state == ON || rm->state == OFF) goto end;
 
+    filp = regs_return_value(regs);
+    
+    if ( filp == NULL) goto end;//check if the filp_open operation actually returned file pointer
+    
+    else{
+        inode_id = filp->f_dentry->d_inode->i_ino; 
+        list_for_each(ptr, &rm->paths.list) {
+            node_ptr = list_entry(ptr, node, list);
+            if(node_ptr->inode_cod == inode_id){ //qui va o il codice inode o il path, dove lo prendo??
+                printk("%s: the file associated to %ld inode has been open ", MODNAME, inode_id );
+                write_to_file("file test in utils aperto", "./test.txt");
+                goto end;
+            }
+    }
+        
+    }
+end:
     return 0;
 }
 
