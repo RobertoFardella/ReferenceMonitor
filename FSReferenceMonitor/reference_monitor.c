@@ -9,10 +9,6 @@
 #include <linux/unistd.h> // Include per geteuid()
 #include <linux/cred.h>
 #include <linux/kprobes.h>
-#include <linux/key.h>
-#include <linux/crypto.h>
-#include <crypto/hash.h>
-#include <linux/hash.h>
 #include <linux/errno.h>
 #include "referenceMonitor.h"
 
@@ -266,21 +262,21 @@ int init_module(void) {
      char * buffer;
     loff_t offset = 0;
      size_t count1;
-    rm =  kmalloc(sizeof(ref_mon), GFP_KERNEL);
+    
+    rm =  kmalloc(sizeof(ref_mon), GFP_KERNEL); //alloc memory and setup reference monitor struct
+    rm->state = REC_ON;// init state of reference monitor
+    INIT_LIST_HEAD(&rm->paths.list); //inizializzo la struttura list_head in rm
 
     retprobe.kp.symbol_name = target_func;
 	retprobe.handler = (kretprobe_handler_t) sys_open_wrapper;
 	retprobe.entry_handler = (kretprobe_handler_t)NULL;
 	retprobe.maxactive = -1; //lets' go for the default number of active kretprobes manageable by the kernel
 
-	ret = register_kretprobe(&retprobe);
+	ret = register_kretprobe(&retprobe); //register the kretprobe for the filp_open to intercept the file opened
 	if (ret < 0) {
 		printk("%s: hook init failed , returned %d\n", MODNAME, ret);
 		return ret;
 	}
-    
-    INIT_LIST_HEAD(&rm->paths.list); //inizializzo la struttura list_head in rm
-    rm->state = REC_ON;//parto nello stato OFF
 
     //if(!try_module_get(THIS_MODULE)) return -1;
     if(systemcall_table!=0){

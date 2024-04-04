@@ -1,6 +1,9 @@
-
-
-#include "referenceMonitor.h"
+#include <linux/key.h>
+#include <linux/crypto.h>
+#include <crypto/hash.h>
+#include <linux/hash.h>
+#include <linux/unistd.h> 
+#include "./../referenceMonitor.h"
 
 int write_to_file(char * content, char * filepath ) {
     struct file *file;
