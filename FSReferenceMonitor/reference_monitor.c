@@ -159,6 +159,10 @@ asmlinkage int sys_manage_link(char* pathname,int op){
     }
 
     node_ptr = kmalloc(sizeof(node), GFP_KERNEL);
+    if (node_ptr == NULL) {
+                printk("allocation of node_ptr into the list failed/n");
+                return -ENOMEM;
+            }
 
     if(op == 0){ //path da aggiungere alla lista
             spin_lock(&lock);
@@ -170,9 +174,17 @@ asmlinkage int sys_manage_link(char* pathname,int op){
         
             node_ptr = list_entry(new_node, node, list); 
             node_ptr->path = pathname;
-            kern_path(pathname, LOOKUP_FOLLOW , &path );
+            if(kern_path(pathname, LOOKUP_FOLLOW , &path ) != 0 ){
+                 printk("kern_path failed/n");
+                return -ENOMEM;
+
+            }
 
             inode = kmalloc(sizeof(struct inode), GFP_KERNEL);
+            if (inode == NULL) {
+                printk("allocation of inode into the list failed/n");
+                return -ENOMEM;
+            }
             inode =  path.dentry->d_inode;
             node_ptr->inode_cod = inode->i_ino;
             spin_lock(&lock);
