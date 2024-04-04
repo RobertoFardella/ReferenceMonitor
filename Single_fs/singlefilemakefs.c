@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
 	struct onefilefs_inode file_inode;
 	struct onefilefs_dir_record record;
 	char *block_padding;
-	char *file_body = "Wathever content you would like.\n";//this is the default content of the unique file 
+	char *file_body = "Log File: Any attempt to write access will be reported in this file.\n";//this is the default content of the unique file 
 
 	if (argc != 2) {
 		printf("Usage: mkfs-singlefilefs <device>\n");
@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
 	sb.magic = MAGIC;
 	sb.block_size = DEFAULT_BLOCK_SIZE;
 
-	ret = write(fd, (char *)&sb, sizeof(sb));
+	ret = write(fd, (char *)&sb, sizeof(sb)); //scrittura del superblocco
 
 	if (ret != DEFAULT_BLOCK_SIZE) {
 		printf("Bytes written [%d] are not equal to the default block size.\n", (int)ret);
@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
 	nbytes = DEFAULT_BLOCK_SIZE - sizeof(file_inode);
 	block_padding = malloc(nbytes);
 
-	ret = write(fd, block_padding, nbytes);
+	ret = write(fd, block_padding, nbytes); 
 
 	if (ret != nbytes) {
 		printf("The padding bytes are not written properly. Retry your mkfs\n");

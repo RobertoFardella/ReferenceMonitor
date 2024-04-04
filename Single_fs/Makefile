@@ -13,7 +13,8 @@ unload-FS-driver:
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-	rm onefilemakefs
+	rm singlefilemakefs
+
 
 create-fs:
 	dd bs=4096 count=100 if=/dev/zero of=image
@@ -23,5 +24,29 @@ create-fs:
 mount-fs:
 	sudo mount -o loop -t singlefilefs image ./mount/
 
+destroy-fs:
+	sudo umount ./mount
+
+ex-create-fs:
+	dd bs=4096 count=100 if=/dev/zero of=./Single_fs/image
+	-f ./Single_fs/singlefilefs ./Single_fs/image 
+	mkdir ./Single_fs/mount
+	
+ex-mount-fs:
+	 sudo mount -o loop -t singlefilefs ./Single_fs/image ./Single_fs/mount/
+
 
 #digitare lsblk
+
+#image è il parametor passato allo script di rimepimento del filesystem
+
+remote-build:
+	 make -C /lib/modules/$(shell uname -r)/build M=$(PWD)/Single_fs modules
+
+remote-insmod:
+	 sudo insmod Single_fs/singlefilefs.ko
+
+remote-clean:
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD)/Single_fs  clean
+remote-rmmod:
+	sudo rmmod singlefilefs.ko

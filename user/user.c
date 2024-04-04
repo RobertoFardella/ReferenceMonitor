@@ -23,10 +23,9 @@ int main(int argc, char** argv){
 
 	//ret = syscall(134,state, pw , size);
 	//printf("\n il valore tornato dalla system call %d e': %d \n", syscall_index[0], ret);
-	ret = syscall(syscall_index[1], "ciao", 0 );
-	ret = syscall(syscall_index[1], "ciao2", 0 );  
-	ret = syscall(syscall_index[1], "elimino", 1 ); 
-	ret = syscall(syscall_index[1], "ricerca", 2 );
+	ret = syscall(syscall_index[1], "/home/zudelino/Documenti/GitHub/ReferenceMonitor/FSReferenceMonitor/utils/test.txt", 0 );
+	ret = syscall(syscall_index[1], "/home/zudelino/Documenti/GitHub/ReferenceMonitor/FSReferenceMonitor/utils", 0 );  
+	ret = syscall(syscall_index[1], "", 2 );
 
 	return 0;
 }

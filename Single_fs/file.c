@@ -11,19 +11,21 @@
 
 #include "singlefilefs.h"
 
-#define MODNAME "reference_monitor"
+#define MODNAME "Single-fs"
+
+#define LOG_FILE_PATH "./mount/the-file"
 
 
 ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t * off) {
 
     struct buffer_head *bh = NULL;
-    struct inode * the_inode = filp->f_inode;
+    struct inode * the_inode = filp->f_inode; 
     uint64_t file_size = the_inode->i_size;
     int ret;
     loff_t offset;
     int block_to_read;//index of the block to be read from device
 
-    printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld)",MODNAME, len, *off, file_size);
+    printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld) \n",MODNAME, len, *off, file_size);
 
     //this operation is not synchronized 
     //*off can be changed concurrently 
@@ -58,10 +60,37 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
 
 }
 
-/*ssize_t onefilefs_write(struct file * filp, char __user * buf, size_t len, loff_t * off) {
+ssize_t onefilefs_write(struct file *filp, const char *buf, size_t len, loff_t *off) {
+    struct task_struct *task = current; // Get the current task (process)
+    struct inode *inode = filp->f_inode;
+    struct cred *cred = current_cred(); // Get the current credentials (user ID, effective user ID)
+    struct file *filp;
+    char *program_path = NULL;
+    int ret;
 
-    return 0;
-}*/
+    // Get the program path
+    program_path = "path";
+
+    // Write the log entry to the file
+    ret = vfs_write(filp, "TGID: ", strlen("TGID: "),0);
+    ret += vfs_write(filp, task->comm, strlen(task->comm),0);
+    ret += vfs_write(filp, ", Thread ID: ", strlen(", Thread ID: "),0);
+    ret += vfs_write(filp, "user-id: ", strlen("user-id: "),0);
+    ret += vfs_write(filp, cred->uid.val, strlen(cred->uid.val),0);
+    ret += vfs_write(filp, ", Effective user-id: ", strlen(", Effective user-id: "),0);
+    ret += vfs_write(filp, cred->euid.val, strlen(cred->euid.val),0);
+    ret += vfs_write(filp, ", Program path: ", strlen(", Program path: "),0);
+    ret += vfs_write(filp, program_path, strlen(program_path),0);
+    ret += vfs_write(filp, "\n", 1,0);
+
+
+    // Close the log file
+    filp_close(filp, NULL);
+
+    kfree(program_path);
+
+    return ret;
+}
 
 
 struct dentry *onefilefs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags) {
@@ -132,5 +161,5 @@ const struct inode_operations onefilefs_inode_ops = {
 const struct file_operations onefilefs_file_operations = {
     .owner = THIS_MODULE,
     .read = onefilefs_read,
-    //.write = onefilefs_write, 
+    .write = onefilefs_write, 
 };

@@ -10,7 +10,7 @@
 
 #include "singlefilefs.h"
 
-#define MODNAME "reference_monitor"
+#define MODNAME "single-fs"
 
 //this iterate function just returns 3 entries: . and .. and then the name of the unique file of the file system
 static int onefilefs_iterate(struct file *file, struct dir_context* ctx) {
@@ -61,4 +61,3 @@ const struct file_operations onefilefs_dir_operations = {
     .owner = THIS_MODULE,
     .iterate = onefilefs_iterate,
 };
-//

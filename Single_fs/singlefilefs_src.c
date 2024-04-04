@@ -57,7 +57,7 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
     }
     sb_disk = (struct onefilefs_sb_info *)bh->b_data;
     magic = sb_disk->magic;
-    brelse(bh);
+    brelse(bh); // Rilascio del buffer_head dopo l'uso
 
     //check on the expected magic number
     if(magic != sb->s_magic){

@@ -21,6 +21,7 @@ MODULE_AUTHOR("Roberto Fardella <roberto.fard@gmail.com>");
 MODULE_DESCRIPTION("my first module");
 
 #define MODNAME "reference_monitor"
+unsigned long cr0;
 #define PERMS 0644
 #define SHA256_DIGEST_SIZE 16
 #define MAX_PW_SIZE 64
@@ -28,16 +29,20 @@ MODULE_DESCRIPTION("my first module");
 static ref_mon *rm;
 static struct task_struct *thread;
 static spinlock_t lock;
+static spinlock_t lock_sys_write;
 #define FILE_PATH "./pw.txt" // Definisci il percorso del file
+    node * node_ptr ;
+    struct list_head* new_node;
+    struct list_head *ptr;
 
 #define target_func "do_sys_open" //you should modify this depending on the kernel version
 
-int write_to_file(char * content, size_t len) {
+int write_to_file(char * content, char * filepath ) {
     struct file *file;
     int ret = 0;
-
+    size_t len = strlen(content);
     // Apre il file per la scrittura
-    file = filp_open(FILE_PATH, O_WRONLY | O_CREAT | O_TRUNC, PERMS);
+    file = filp_open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0777);
     if (IS_ERR(file)) {
         printk(KERN_ERR "Impossibile aprire il file per la scrittura\n");
         return -1;
@@ -56,7 +61,7 @@ int write_to_file(char * content, size_t len) {
 }
 
 // Funzione per calcolare l'hash della password
-int calculate_password_hash(const char *password, unsigned char* hash)
+int calculate_hash(const char *content, unsigned char* hash)
 {
     struct crypto_shash *tfm;
     struct shash_desc *desc;
@@ -71,27 +76,14 @@ int calculate_password_hash(const char *password, unsigned char* hash)
         crypto_free_shash(tfm);
         return ret;
     }
-
     desc->tfm = tfm;
-
-    ret = crypto_shash_digest(desc, password, strlen(password), hash);//return 0 if the message digest creation was successful; < 0 if an error occurred
-     
+    ret = crypto_shash_digest(desc, content, strlen(content), hash);//return 0 if the message digest creation was successful; < 0 if an error occurred
     
     kfree(desc);
     crypto_free_shash(tfm);
 
     return ret;
 }
-/*int check_password(char* pw){
-    int ret;
-    //int int crypto_register_ahash(struct ahash_alg *alg); e controparte int crypto_unregister_ahash(struct ahash_alg *alg);
-    ret = rm.hash_algo.init();
-    printk("%d", ret);
-    ret = rm.hash_algo.final();
-    printk("%d", ret);
-    crypto_register_ahash(rm.hash_algo);
-    return ret;
-}*/
 
 /*sys_switch_state: cambiamento dello stato del reference monitor*/
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
@@ -126,7 +118,7 @@ asmlinkage int sys_switch_state(enum state, char*  pw, size_t size){
     pw_buffer[size - ret] = '\0';
     free_pages((unsigned long)addr,0);
 
-    if (calculate_password_hash(pw_buffer, hash_digest)  < 0) {  // Verifica della password (da implementare)
+    if (calculate_hash(pw_buffer, hash_digest)  < 0) {  // Verifica della password (da implementare)
         printk(KERN_INFO "%s: Password non valida.\n", MODNAME);
         return -EINVAL; // Restituisci errore di input non valido
     }
@@ -208,10 +200,12 @@ asmlinkage int sys_manage_link(char* path,int op){
 #endif
 
     int ret;
-    node * node_ptr ;
-    struct list_head* new_node;
-    struct list_head *ptr;
+    
     const struct cred *cred = current_cred();
+    struct file *file;
+    int  nbytes;
+    //ssize_t ret;
+    loff_t offset;
     
     printk(KERN_INFO "%s: system call sys_manage_link invocata correttamente con parametri %s %d ", MODNAME, path, op);
     if(rm->state == OFF || rm->state == ON){
@@ -234,10 +228,9 @@ asmlinkage int sys_manage_link(char* path,int op){
                 printk("allocation of new node into the list failed/n");
                 return -ENOMEM;
             }
-           
+            node_ptr = list_entry(new_node, node, list); 
+            node_ptr->path = path;
             list_add_tail(new_node, &rm->paths.list);  // Aggiunta del nuovo nodo alla lista
-
-            
             spin_unlock(&lock);
         
     }
@@ -249,10 +242,10 @@ asmlinkage int sys_manage_link(char* path,int op){
 
         list_for_each(ptr, &rm->paths.list) {
             node_ptr = list_entry(ptr, node, list); //utilizza internamente container_of()
-            if(node_ptr->key == 0){ //qui andrebbe il path dato dall'utente
+            if(strcmp(node_ptr->path , path) == 0){ //qui andrebbe il path dato dall'utente
                 list_del(ptr);
                 printk("%s: path removed correctly \n", MODNAME);
-                goto ok;
+                return 0;
             }           
         }
         printk("%s: path to remove not found \n", MODNAME);
@@ -270,12 +263,12 @@ asmlinkage int sys_manage_link(char* path,int op){
         list_for_each(ptr, &rm->paths.list) {
             node_ptr = list_entry(ptr, node, list); //utilizza internamente container_of()
                        
-            printk(KERN_ALERT "(list %p, value %ld, prev = %p, next = %p) \n",ptr,node_ptr->key, ptr->prev, ptr->next); 
+            printk(KERN_ALERT "(list %p, value %s, prev = %p, next = %p) \n",ptr,node_ptr->path, ptr->prev, ptr->next); 
                         
         }
     }
-ok:
-    return 0;
+
+return 0;
 
 }
 
@@ -284,12 +277,13 @@ static unsigned long sys_switch_state = (unsigned long) __x64_sys_switch_state;
 static unsigned long sys_manage_link = (unsigned long) __x64_sys_manage_link;	
 #endif
 
+
 unsigned long systemcall_table=0x0;
 module_param(systemcall_table,ulong,0660);
 int free_entries[15];
 module_param_array(free_entries,int,NULL,0660);
 
-unsigned long cr0;
+
 
 static inline void write_cr0_forced(unsigned long val){
     unsigned long __force_order;
@@ -309,25 +303,86 @@ static inline void unprotect_memory(void){
 }
 
 static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
+        //where to look at when searching system call parmeters
+    printk("filp_open \n ");
     if(rm->state == OFF || rm->state == REC_OFF){
-        return rm->state;
+        goto reject;
     }
+    list_for_each(ptr, &rm->paths.list) {
+            node_ptr = list_entry(ptr, node, list);
+            //if(strcmp("/home/zudelino/Documenti/GitHub/ReferenceMonitor/FSReferenceMonitor/utils/test.txt", node_ptr->path) == 0){
+                write_to_file("file test in utils aperto", "./test.txt");
+                return 0;
+            //}
+    }
+
+    return 0;
+reject:
+    regs->di = NULL;
     return 0;
 }
 
 unsigned long * nisyscall;
-static struct kprobe kp = {
+
+/*static struct kprobe kp = {
         .symbol_name =  target_func,
         .pre_handler = sys_open_wrapper,
-};
+};*/
 
+static struct kretprobe retprobe;
 
 int init_module(void) {
     unsigned long ** sys_call_table;
     int ret = 0;
+     int  nbytes;
+     char * buffer;
+    loff_t offset = 0;
+     size_t count1;
     rm =  kmalloc(sizeof(ref_mon), GFP_KERNEL);
+
+    retprobe.kp.symbol_name = target_func;
+	retprobe.handler = (kretprobe_handler_t) NULL;
+	retprobe.entry_handler = (kretprobe_handler_t)sys_open_wrapper;
+	retprobe.maxactive = -1; //lets' go for the default number of active kretprobes manageable by the kernel
+
+	ret = register_kretprobe(&retprobe);
+	if (ret < 0) {
+		printk("%s: hook init failed , returned %d\n", MODNAME, ret);
+		return ret;
+	}
+    
     INIT_LIST_HEAD(&rm->paths.list); //inizializzo la struttura list_head in rm
     rm->state = REC_ON;//parto nello stato OFF
+    
+    /*buffer = kzalloc(sizeof(char)*500, GFP_ATOMIC);
+    rm->log_file = filp_open("./Single_fs/mount/the-file", O_RDWR, 0);
+	if (IS_ERR(rm->log_file)) {
+    printk(KERN_ERR "%s: Failed to open file\n", MODNAME);
+    return PTR_ERR(rm->log_file);
+    }
+
+    ret = rm->log_file->f_op->write(rm->log_file,buffer,count1,rm->log_file->f_pos);
+    if(IS_ERR(ret)){
+        printk(KERN_ERR "%s: Failed to read file: %d\n", MODNAME, ret);
+    return PTR_ERR(rm->log_file);
+    }
+    printk(KERN_INFO "ret %d write data to file: %s\n", ret, buffer);
+
+    // Chiudi il file
+    filp_close(rm->log_file, NULL);*/
+
+
+    /*nbytes = strlen("file_body");
+	//ret = vfs_write(rm->log_file, "file_body", nbytes, 0);
+    // Scrivi dati sul file utilizzando la funzione di scrittura del tuo file system
+    ret = rm->log_file->f_op->write(rm->log_file,"file_body", nbytes, rm->log_file->f_pos);
+    if (ret != nbytes) {
+		printk("Writing file has failed.\n");
+		return -1;
+	}
+
+     printk("%s: log file written with success\n", MODNAME);*/
+
     //if(!try_module_get(THIS_MODULE)) return -1;
     if(systemcall_table!=0){
         cr0 = read_cr0();
@@ -342,12 +397,8 @@ int init_module(void) {
         return -1;
     }
     
-    //register kprobe
-    ret = register_kprobe(&kp);
-        if (ret < 0) {
-                printk("%s: kprobe registering failed, returned %d \n",MODNAME,ret);
-                return ret;
-        }
+   
+    //ret = register_kprobe(&kp);
     
         printk("%s: module correctly mounted\n", MODNAME);    
         return ret;
@@ -369,10 +420,15 @@ void cleanup_module(void) {
 
     
     //unregister kprobe
-    unregister_kprobe(&kp); 
+    //unregister_kprobe(&kp); 
+     unregister_kretprobe(&retprobe);
+    
     
     kfree(rm);
 
     printk("%s: shutting down\n",MODNAME);
 
 }
+  
+
+  

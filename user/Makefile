@@ -1,4 +1,4 @@
 all:
-	gcc user.c -o a.out
-	sudo ./a.out
+	gcc user/user.c -o ./user/a.out
+	sudo ./user/a.out
 

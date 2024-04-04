@@ -16,7 +16,7 @@ static enum rm_state {
 
 typedef struct _node{
     struct list_head list;
-    unsigned long key;
+    char* path;
 } node;
 
 typedef struct _rcu__paths_list{
@@ -44,6 +44,7 @@ typedef struct referenceMonitor
 {
     enum rm_state state;
      node paths;
+	 struct file *log_file;
 	//struct shash_alg hash_algo;  //synchronous message digest definition
 
 }ref_mon;
