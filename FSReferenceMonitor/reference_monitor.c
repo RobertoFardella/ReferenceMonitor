@@ -10,6 +10,8 @@
 #include <linux/cred.h>
 #include <linux/kprobes.h>
 #include <linux/errno.h>
+#include <linux/namei.h>
+#include <linux/path.h>
 #include "referenceMonitor.h"
 
 MODULE_LICENSE("GPL");
@@ -134,7 +136,7 @@ asmlinkage int sys_switch_state(enum state, char*  pw, size_t size){
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
 __SYSCALL_DEFINEx(2,_manage_link, char*, path, int, op){
 #else
-asmlinkage int sys_manage_link(char* path,int op){
+asmlinkage int sys_manage_link(char* pathname,int op){
 #endif
 
     int ret;
@@ -181,7 +183,7 @@ asmlinkage int sys_manage_link(char* path,int op){
 
         list_for_each(ptr, &rm->paths.list) {
             node_ptr = list_entry(ptr, node, list); //utilizza internamente container_of()
-            if(strcmp(node_ptr->path , path) == 0){ //qui andrebbe il path dato dall'utente
+            if(strcmp(node_ptr->path , pathname) == 0){ //qui andrebbe il path dato dall'utente
                 spin_lock(&lock);
                 list_del(ptr);
                 spin_unlock(&lock);
@@ -249,7 +251,7 @@ static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
      unsigned long inode_id;
     if(rm->state == ON || rm->state == OFF) goto end;
 
-    filp = regs_return_value(regs);
+    filp = (struct file*) regs_return_value(regs);
     
     if ( filp == NULL) goto end;//check if the filp_open operation actually returned file pointer
     
