@@ -1,5 +1,5 @@
-obj-m := reference_monitor.o
-reference_monitor -objs += reference_monitorMain.o ./utility/utils.o
+obj-m := reference_monitor_main.o
+reference_monitor_main-objs := reference_monitor.o ./utility/utils.o
 
 A := $(shell cat /sys/module/the_usctm/parameters/sys_call_table_address)
 array_free_entries := $(shell cat /sys/module/the_usctm/parameters/free_entries) 
