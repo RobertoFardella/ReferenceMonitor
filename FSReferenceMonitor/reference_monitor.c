@@ -141,13 +141,13 @@ asmlinkage int sys_manage_link(char* pathname,int op){
 
     int ret;
     const struct cred *cred = current_cred();
-    int  nbytes;
-    loff_t offset;
     struct inode *inode;
     node * node_ptr ;
     struct path path;
+
     
     printk(KERN_INFO "%s: system call sys_manage_link invocata correttamente con parametri %s %d ", MODNAME, pathname, op);
+    
     if(rm->state == OFF || rm->state == ON){
         printk("%s: passare allo stato di REC-ON oppure REC-OFF per poter eseguire l'attivita' di inserimento/eliminazione del path", MODNAME);
         return -EPERM;    
@@ -157,15 +157,17 @@ asmlinkage int sys_manage_link(char* pathname,int op){
         printk(KERN_INFO "Solo l'UID effettivo root può eseguire l'attivita' di inserimento/eliminazione del path.\n");
         return -EPERM; // Restituisci errore di permesso negato
     }
-    printk("ok \n");
+
+    node_ptr = kmalloc(sizeof(node), GFP_KERNEL);
+
     if(op == 0){ //path da aggiungere alla lista
             spin_lock(&lock);
-            new_node = kmalloc(sizeof(struct list_head),GFP_KERNEL);
+            struct list_head* new_node = kmalloc(sizeof(struct list_head), GFP_KERNEL);
             if (new_node == NULL) {
                 printk("allocation of new node into the list failed/n");
                 return -ENOMEM;
             }
-            printk("ok2 \n");
+        
             node_ptr = list_entry(new_node, node, list); 
             node_ptr->path = pathname;
             kern_path(pathname, LOOKUP_FOLLOW , &path );
@@ -204,7 +206,6 @@ asmlinkage int sys_manage_link(char* pathname,int op){
             printk("%s: the set of paths to protect is empty \n", MODNAME);
             return -EFAULT;
         }
-
         printk("%s: lista dei path che non sono accessibili in scrittura", MODNAME);
 
         list_for_each(ptr, &rm->paths.list) {
