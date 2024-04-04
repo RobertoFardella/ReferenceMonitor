@@ -26,14 +26,17 @@ unsigned long cr0;
 #define SHA256_DIGEST_SIZE 16
 #define MAX_PW_SIZE 64
 #define KEY_DESC "my_password_key"
+#define FILE_PATH "./pw.txt" // Definisci il percorso del file
 static ref_mon *rm;
-static struct task_struct *thread;
+
 static spinlock_t lock;
 static spinlock_t lock_sys_write;
-#define FILE_PATH "./pw.txt" // Definisci il percorso del file
+
     node * node_ptr ;
     struct list_head* new_node;
     struct list_head *ptr;
+    static struct kretprobe retprobe;
+    static struct task_struct *thread;
 
 #define target_func "do_sys_open" //you should modify this depending on the kernel version
 
@@ -41,27 +44,23 @@ int write_to_file(char * content, char * filepath ) {
     struct file *file;
     int ret = 0;
     size_t len = strlen(content);
-    // Apre il file per la scrittura
+
     file = filp_open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0777);
     if (IS_ERR(file)) {
         printk(KERN_ERR "Impossibile aprire il file per la scrittura\n");
         return -1;
     }
-
-    // Scrive l'hash sul file
     ret = kernel_write(file, content, len, &file->f_pos);
     if (ret < 0) {
         printk(KERN_ERR "Errore durante la scrittura sul file\n");
     }
-
-    // Chiude il file
     filp_close(file, NULL);
 
     return ret;
 }
 
-// Funzione per calcolare l'hash della password
-int calculate_hash(const char *content, unsigned char* hash)
+
+int calculate_hash(const char *content, unsigned char* hash) // Funzione per calcolare l'hash della password
 {
     struct crypto_shash *tfm;
     struct shash_desc *desc;
@@ -171,18 +170,26 @@ asmlinkage int sys_switch_state(enum state, char*  pw, size_t size){
       case ON:
         printk(KERN_INFO  "lo stato inserito e' ON");
         rm->state = ON;
+        if( disable_kretprobe(&retprobe) != 0 )
+            printk("disabling retproble failed \n");
         break;
     case OFF:
         printk(KERN_INFO  "lo stato inserito e' OFF");
         rm->state = OFF;
+        if( disable_kretprobe(&retprobe) != 0 )
+            printk("disabling retproble failed \n");
         break;
     case REC_ON:
         printk(KERN_INFO  "lo stato inserito e' REC_ON");
         rm->state = REC_ON;
+        if( enable_kretprobe(&retprobe) != 0 )
+            printk("abiliting  retproble failed \n");
         break;
     case REC_OFF:    
         printk(KERN_INFO "lo stato inserito e' REC_OFF");
         rm->state = REC_OFF;
+        if( enable_kretprobe(&retprobe) != 0 )
+            printk("abiliting  retproble failed \n");
         break;
     default:
         printk(KERN_INFO "lo stato inserito non e' valido");
@@ -221,8 +228,6 @@ asmlinkage int sys_manage_link(char* path,int op){
     
     if(op == 0){ //path da aggiungere alla lista
             spin_lock(&lock);
-            
-            
             new_node = kmalloc(sizeof(struct list_head),GFP_KERNEL);
             if (new_node == NULL) {
                 printk("allocation of new node into the list failed/n");
@@ -230,6 +235,7 @@ asmlinkage int sys_manage_link(char* path,int op){
             }
             node_ptr = list_entry(new_node, node, list); 
             node_ptr->path = path;
+            spin_lock(&lock);
             list_add_tail(new_node, &rm->paths.list);  // Aggiunta del nuovo nodo alla lista
             spin_unlock(&lock);
         
@@ -243,7 +249,9 @@ asmlinkage int sys_manage_link(char* path,int op){
         list_for_each(ptr, &rm->paths.list) {
             node_ptr = list_entry(ptr, node, list); //utilizza internamente container_of()
             if(strcmp(node_ptr->path , path) == 0){ //qui andrebbe il path dato dall'utente
+                spin_lock(&lock);
                 list_del(ptr);
+                spin_unlock(&lock);
                 printk("%s: path removed correctly \n", MODNAME);
                 return 0;
             }           
@@ -304,16 +312,15 @@ static inline void unprotect_memory(void){
 
 static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
         //where to look at when searching system call parmeters
-    printk("filp_open \n ");
-    if(rm->state == OFF || rm->state == REC_OFF){
-        goto reject;
-    }
+    
+    
     list_for_each(ptr, &rm->paths.list) {
             node_ptr = list_entry(ptr, node, list);
-            //if(strcmp("/home/zudelino/Documenti/GitHub/ReferenceMonitor/FSReferenceMonitor/utils/test.txt", node_ptr->path) == 0){
+            if(strcmp("c", node_ptr->path) == 0){ //qui va o il codice inode o il path, dove lo prendo??
+                printk("filp_open \n ");
                 write_to_file("file test in utils aperto", "./test.txt");
                 return 0;
-            //}
+            }
     }
 
     return 0;
@@ -329,7 +336,7 @@ unsigned long * nisyscall;
         .pre_handler = sys_open_wrapper,
 };*/
 
-static struct kretprobe retprobe;
+
 
 int init_module(void) {
     unsigned long ** sys_call_table;
@@ -341,8 +348,8 @@ int init_module(void) {
     rm =  kmalloc(sizeof(ref_mon), GFP_KERNEL);
 
     retprobe.kp.symbol_name = target_func;
-	retprobe.handler = (kretprobe_handler_t) NULL;
-	retprobe.entry_handler = (kretprobe_handler_t)sys_open_wrapper;
+	retprobe.handler = (kretprobe_handler_t) sys_open_wrapper;
+	retprobe.entry_handler = (kretprobe_handler_t)NULL;
 	retprobe.maxactive = -1; //lets' go for the default number of active kretprobes manageable by the kernel
 
 	ret = register_kretprobe(&retprobe);

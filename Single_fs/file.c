@@ -64,7 +64,6 @@ ssize_t onefilefs_write(struct file *filp, const char *buf, size_t len, loff_t *
     struct task_struct *task = current; // Get the current task (process)
     struct inode *inode = filp->f_inode;
     struct cred *cred = current_cred(); // Get the current credentials (user ID, effective user ID)
-    struct file *filp;
     char *program_path = NULL;
     int ret;
 

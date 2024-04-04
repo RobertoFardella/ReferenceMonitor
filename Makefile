@@ -8,7 +8,7 @@ all:
 clean:
 	make -f FSReferenceMonitor/Makefile remote-clean
 	make -f Linux-sys_call_table-discoverer/Makefile remote-clean
-	#make -f Single_fs/Makefile remote-clean
+	make -f Single_fs/Makefile remote-clean
 insmod:
 	sudo make -f Linux-sys_call_table-discoverer/Makefile remote-insmod
 	sudo make -f FSReferenceMonitor/Makefile remote-insmod
