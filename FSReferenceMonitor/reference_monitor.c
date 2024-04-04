@@ -33,7 +33,7 @@ static struct task_struct *thread;
 static spinlock_t lock;
 static spinlock_t lock_sys_write;
 
-node * node_ptr ;
+
 struct list_head* new_node;
 struct list_head *ptr;
 unsigned long * nisyscall;
@@ -134,20 +134,20 @@ asmlinkage int sys_switch_state(enum state, char*  pw, size_t size){
 
 /*sys_add_or_remove_link: aggiunta o rimozione del path all'insieme da protezioni aperture in modalità scrittura*/
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-__SYSCALL_DEFINEx(2,_manage_link, char*, path, int, op){
+__SYSCALL_DEFINEx(2,_manage_link, char*, pathname, int, op){
 #else
 asmlinkage int sys_manage_link(char* pathname,int op){
 #endif
 
     int ret;
     const struct cred *cred = current_cred();
-    struct file *file;
     int  nbytes;
     loff_t offset;
     struct inode *inode;
+    node * node_ptr ;
     struct path path;
     
-    printk(KERN_INFO "%s: system call sys_manage_link invocata correttamente con parametri %s %d ", MODNAME, path, op);
+    printk(KERN_INFO "%s: system call sys_manage_link invocata correttamente con parametri %s %d ", MODNAME, pathname, op);
     if(rm->state == OFF || rm->state == ON){
         printk("%s: passare allo stato di REC-ON oppure REC-OFF per poter eseguire l'attivita' di inserimento/eliminazione del path", MODNAME);
         return -EPERM;    
@@ -157,7 +157,7 @@ asmlinkage int sys_manage_link(char* pathname,int op){
         printk(KERN_INFO "Solo l'UID effettivo root può eseguire l'attivita' di inserimento/eliminazione del path.\n");
         return -EPERM; // Restituisci errore di permesso negato
     }
-    
+    printk("ok \n");
     if(op == 0){ //path da aggiungere alla lista
             spin_lock(&lock);
             new_node = kmalloc(sizeof(struct list_head),GFP_KERNEL);
@@ -165,17 +165,21 @@ asmlinkage int sys_manage_link(char* pathname,int op){
                 printk("allocation of new node into the list failed/n");
                 return -ENOMEM;
             }
+            printk("ok2 \n");
             node_ptr = list_entry(new_node, node, list); 
             node_ptr->path = pathname;
             kern_path(pathname, LOOKUP_FOLLOW , &path );
+
+            inode = kmalloc(sizeof(struct inode), GFP_KERNEL);
             inode =  path.dentry->d_inode;
             node_ptr->inode_cod = inode->i_ino;
             spin_lock(&lock);
             list_add_tail(new_node, &rm->paths.list);  // Aggiunta del nuovo nodo alla lista
             spin_unlock(&lock);
+            
         
     }
-    else if(op == 1){ //path da rimuovere dalla lista
+    else if(op == 1){ //ELIMINAZIONE
         if(list_empty(&rm->paths.list)){
             printk("%s: the set of paths to protect is empty \n", MODNAME);
             return -EFAULT;
@@ -195,7 +199,7 @@ asmlinkage int sys_manage_link(char* pathname,int op){
         return -EINVAL;
 
     }
-    else{ //visualizzo la lista dei path da proteggere da
+    else{ //ENUMERAZIONE
         if(list_empty(&rm->paths.list)){
             printk("%s: the set of paths to protect is empty \n", MODNAME);
             return -EFAULT;
@@ -205,8 +209,8 @@ asmlinkage int sys_manage_link(char* pathname,int op){
 
         list_for_each(ptr, &rm->paths.list) {
             node_ptr = list_entry(ptr, node, list); //utilizza internamente container_of()
-                       
-            printk(KERN_ALERT "(list %p, value %lu, path %s, prev = %p, next = %p) \n",ptr, filp->f_dentry->d_inode->i_ino, ptr->path, ptr->prev, ptr->next); 
+            
+            printk(KERN_ALERT "(list %p, value %lu, path %s, prev = %p, next = %p) \n",ptr, node_ptr->inode_cod, node_ptr->path, ptr->prev, ptr->next); 
                         
         }
     }
@@ -247,16 +251,16 @@ static inline void unprotect_memory(void){
 
 static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
         //where to look at when searching system call parmeters
-     struct file * filp;
+     /*struct file * filp;
      unsigned long inode_id;
     if(rm->state == ON || rm->state == OFF) goto end;
-
+    filp = kzalloc(sizeof(struct file), GFP_ATOMIC),
     filp = (struct file*) regs_return_value(regs);
     
     if ( filp == NULL) goto end;//check if the filp_open operation actually returned file pointer
     
     else{
-        inode_id = filp->f_dentry->d_inode->i_ino; 
+        inode_id = filp->f_inode->i_ino;
         list_for_each(ptr, &rm->paths.list) {
             node_ptr = list_entry(ptr, node, list);
             if(node_ptr->inode_cod == inode_id){ //qui va o il codice inode o il path, dove lo prendo??
@@ -267,7 +271,7 @@ static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     }
         
     }
-end:
+end:*/
     return 0;
 }
 
