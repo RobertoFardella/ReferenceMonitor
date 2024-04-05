@@ -11,8 +11,9 @@
 #include <linux/kprobes.h>
 #include <linux/errno.h>
 #include <linux/namei.h>
+
 #include <linux/path.h>
-#include <linux/atomic.h>
+
 #include "referenceMonitor.h"
 
 MODULE_LICENSE("GPL");
@@ -269,7 +270,7 @@ static inline void unprotect_memory(void){
 static int the_pre_hook(struct kprobe *ri, struct pt_regs *regs){
     
     if(rm->state == ON || rm->state == OFF) return 1; //check if the state of reference monitor is the reconfiguration mode
-    if(list_empty(&rm->paths.list)) ; //check if the set paths is empty
+    if(list_empty(&rm->paths.list)) return 1; //check if the set paths is empty
 
     return 0;
 }
@@ -277,34 +278,27 @@ static int the_hook(struct kprobe *ri, struct pt_regs *regs){
         
      struct file * filp;
      node * node_ptr_h ;
-    struct list_head *ptr_h;
-    
+     struct list_head *ptr_h;
+     struct inode *inode;
    
 
-    filp = (struct file *)regs_return_value(regs);
-    if (filp == (void*)0xfffffffffffffffe || !filp) {
-        //printk(KERN_INFO "sys_open_wrapper: file pointer is NULL\n");
-        goto end;
-    }
-    
-    else{     
+        filp = (struct file*) regs_return_value(regs);
+         
+        if ((long )filp < 0 ) goto end;
+        
+        
         list_for_each(ptr_h, &rm->paths.list) {
-            node_ptr_h = (node*)list_entry(ptr_h, node, list);
-            
-            if(node_ptr_h == NULL || node_ptr_h == (void*)0xfffffffffffffffe ){
-                printk(KERN_ERR "sys_open_wrapper: NODE POINTER is NULL \n");
-                goto end;
-            }
-                printk("%ld" , node_ptr_h->inode_cod );
-                /*if(node_ptr_h->inode_cod  == filp->f_inode->i_ino){ 
+            node_ptr_h = (node*)list_entry(ptr_h, node, list); 
+                                     
+                if(node_ptr_h->inode_cod  == filp->f_inode->i_ino){ 
                     printk("%s: the file associated to %ld inode has been open \n ", MODNAME, filp->f_inode->i_ino );
                     //filp_close(filp, NULL);
-                    //write_to_file("file test in utils aperto \n ", "./test.txt");
+                    write_to_file("file test in utils aperto \n ", "./test.txt");
                     goto end;
-                }*/
+                }
                 
             
-        }
+        
     }
 end:
     return 0;
