@@ -12,6 +12,7 @@
 #include <linux/errno.h>
 #include <linux/namei.h>
 #include <linux/path.h>
+#include <linux/atomic.h>
 #include "referenceMonitor.h"
 
 MODULE_LICENSE("GPL");
@@ -25,17 +26,13 @@ MODULE_DESCRIPTION("my first module");
 #define MAX_PW_SIZE 64
 #define KEY_DESC "my_password_key"
 #define FILE_PATH "./pw.txt" // Definisci il percorso del file
-#define target_func "filp_open" //you should modify this depending on the kernel version
+#define target_func "do_filp_open" //you should modify this depending on the kernel version
 
 static ref_mon *rm;
 static struct kretprobe retprobe;
 static struct task_struct *thread;
 static spinlock_t lock;
 static spinlock_t lock_sys_write;
-
-
-struct list_head* new_node;
-struct list_head *ptr;
 unsigned long * nisyscall;
 unsigned long cr0;
 
@@ -143,13 +140,14 @@ asmlinkage int sys_manage_link(char* pathname,int op){
     const struct cred *cred = current_cred();
     struct inode *inode;
     node * node_ptr ;
-    struct path path;
+    struct list_head *ptr;
+    struct path struct_path;
 
     
-    printk(KERN_INFO "%s: system call sys_manage_link invocata correttamente con parametri %s %d ", MODNAME, pathname, op);
+    printk(KERN_INFO "%s: system call sys_manage_link invocata correttamente con parametri %s %d \n ", MODNAME, pathname, op);
     
     if(rm->state == OFF || rm->state == ON){
-        printk("%s: passare allo stato di REC-ON oppure REC-OFF per poter eseguire l'attivita' di inserimento/eliminazione del path", MODNAME);
+        printk("%s: passare allo stato di REC-ON oppure REC-OFF per poter eseguire l'attivita' di inserimento/eliminazione del path \n", MODNAME);
         return -EPERM;    
     }
     
@@ -160,35 +158,42 @@ asmlinkage int sys_manage_link(char* pathname,int op){
 
     node_ptr = kmalloc(sizeof(node), GFP_KERNEL);
     if (node_ptr == NULL) {
-                printk("allocation of node_ptr into the list failed/n");
+                printk("allocation of node_ptr into the list failed \n");
                 return -ENOMEM;
             }
 
     if(op == 0){ //path da aggiungere alla lista
+            
             spin_lock(&lock);
-            struct list_head* new_node = kmalloc(sizeof(struct list_head), GFP_KERNEL);
+
+            struct list_head * new_node = kmalloc(sizeof(struct list_head), GFP_KERNEL);
             if (new_node == NULL) {
-                printk("allocation of new node into the list failed/n");
+                spin_unlock(&lock);
+                printk("allocation of new node into the list failed \n");
                 return -ENOMEM;
             }
         
             node_ptr = list_entry(new_node, node, list); 
             node_ptr->path = pathname;
-            if(kern_path(pathname, LOOKUP_FOLLOW , &path ) != 0 ){
-                 printk("kern_path failed/n");
-                return -ENOMEM;
+            if(kern_path(pathname, LOOKUP_RCU , &struct_path ) != 0 ){
+                 spin_unlock(&lock);
+                 printk("kern_path failed, the file or directory doesn't exists \n");
+                 return -ENOMEM;
 
             }
 
             inode = kmalloc(sizeof(struct inode), GFP_KERNEL);
+            ptr = kmalloc(sizeof(struct list_head), GFP_KERNEL);
             if (inode == NULL) {
-                printk("allocation of inode into the list failed/n");
+                spin_unlock(&lock);
+                printk("allocation of inode into the list failed \n");
                 return -ENOMEM;
             }
-            inode =  path.dentry->d_inode;
+            
+            inode =  struct_path.dentry->d_inode; struct_path;
             node_ptr->inode_cod = inode->i_ino;
-            spin_lock(&lock);
             list_add_tail(new_node, &rm->paths.list);  // Aggiunta del nuovo nodo alla lista
+            
             spin_unlock(&lock);
             
         
@@ -198,7 +203,8 @@ asmlinkage int sys_manage_link(char* pathname,int op){
             printk("%s: the set of paths to protect is empty \n", MODNAME);
             return -EFAULT;
         }
-
+        
+         
         list_for_each(ptr, &rm->paths.list) {
             node_ptr = list_entry(ptr, node, list); //utilizza internamente container_of()
             if(strcmp(node_ptr->path , pathname) == 0){ //qui andrebbe il path dato dall'utente
@@ -219,7 +225,6 @@ asmlinkage int sys_manage_link(char* pathname,int op){
             return -EFAULT;
         }
         printk("%s: lista dei path che non sono accessibili in scrittura", MODNAME);
-
         list_for_each(ptr, &rm->paths.list) {
             node_ptr = list_entry(ptr, node, list); //utilizza internamente container_of()
             
@@ -229,7 +234,6 @@ asmlinkage int sys_manage_link(char* pathname,int op){
     }
 
 return 0;
-
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
@@ -242,7 +246,6 @@ unsigned long systemcall_table=0x0;
 module_param(systemcall_table,ulong,0660);
 int free_entries[15];
 module_param_array(free_entries,int,NULL,0660);
-
 
 
 static inline void write_cr0_forced(unsigned long val){
@@ -262,29 +265,48 @@ static inline void unprotect_memory(void){
     write_cr0_forced(cr0 & ~X86_CR0_WP);
 }
 
-static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
-        //where to look at when searching system call parmeters
-     /*struct file * filp;
-     unsigned long inode_id;
-    if(rm->state == ON || rm->state == OFF) goto end;
-    filp = kzalloc(sizeof(struct file), GFP_ATOMIC),
-    filp = (struct file*) regs_return_value(regs);
+
+static int the_pre_hook(struct kprobe *ri, struct pt_regs *regs){
     
-    if ( filp == NULL) goto end;//check if the filp_open operation actually returned file pointer
+    if(rm->state == ON || rm->state == OFF) return 1; //check if the state of reference monitor is the reconfiguration mode
+    if(list_empty(&rm->paths.list)) ; //check if the set paths is empty
+
+    return 0;
+}
+static int the_hook(struct kprobe *ri, struct pt_regs *regs){
+        
+     struct file * filp;
+     node * node_ptr_h ;
+    struct list_head *ptr_h;
     
-    else{
-        inode_id = filp->f_inode->i_ino;
-        list_for_each(ptr, &rm->paths.list) {
-            node_ptr = list_entry(ptr, node, list);
-            if(node_ptr->inode_cod == inode_id){ //qui va o il codice inode o il path, dove lo prendo??
-                printk("%s: the file associated to %ld inode has been open ", MODNAME, inode_id );
-                write_to_file("file test in utils aperto", "./test.txt");
+   
+
+    filp = (struct file *)regs_return_value(regs);
+    if (filp == (void*)0xfffffffffffffffe || !filp) {
+        //printk(KERN_INFO "sys_open_wrapper: file pointer is NULL\n");
+        goto end;
+    }
+    
+    else{     
+        list_for_each(ptr_h, &rm->paths.list) {
+            node_ptr_h = (node*)list_entry(ptr_h, node, list);
+            
+            if(node_ptr_h == NULL || node_ptr_h == (void*)0xfffffffffffffffe ){
+                printk(KERN_ERR "sys_open_wrapper: NODE POINTER is NULL \n");
                 goto end;
             }
+                printk("%ld" , node_ptr_h->inode_cod );
+                /*if(node_ptr_h->inode_cod  == filp->f_inode->i_ino){ 
+                    printk("%s: the file associated to %ld inode has been open \n ", MODNAME, filp->f_inode->i_ino );
+                    //filp_close(filp, NULL);
+                    //write_to_file("file test in utils aperto \n ", "./test.txt");
+                    goto end;
+                }*/
+                
+            
+        }
     }
-        
-    }
-end:*/
+end:
     return 0;
 }
 
@@ -301,8 +323,8 @@ int init_module(void) {
     INIT_LIST_HEAD(&rm->paths.list); //inizializzo la struttura list_head in rm
 
     retprobe.kp.symbol_name = target_func;
-	retprobe.handler = (kretprobe_handler_t) sys_open_wrapper;
-	retprobe.entry_handler = (kretprobe_handler_t)NULL;
+	retprobe.handler = (kretprobe_handler_t) the_hook;
+	retprobe.entry_handler = (kretprobe_handler_t) the_pre_hook;
 	retprobe.maxactive = -1; //lets' go for the default number of active kretprobes manageable by the kernel
 
 	ret = register_kretprobe(&retprobe); //register the kretprobe for the filp_open to intercept the file opened
