@@ -191,7 +191,7 @@ asmlinkage int sys_manage_link(char* pathname,int op){
                 return -ENOMEM;
             }
             
-            inode =  struct_path.dentry->d_inode; struct_path;
+            inode =  struct_path.dentry->d_inode;
             node_ptr->inode_cod = inode->i_ino;
             list_add_tail(new_node, &rm->paths.list);  // Aggiunta del nuovo nodo alla lista
             
@@ -221,17 +221,20 @@ asmlinkage int sys_manage_link(char* pathname,int op){
 
     }
     else{ //ENUMERAZIONE
+        spin_lock(&lock);
         if(list_empty(&rm->paths.list)){
+            spin_unlock(&lock);
             printk("%s: the set of paths to protect is empty \n", MODNAME);
             return -EFAULT;
         }
+        
         printk("%s: lista dei path che non sono accessibili in scrittura", MODNAME);
         list_for_each(ptr, &rm->paths.list) {
-            node_ptr = list_entry(ptr, node, list); //utilizza internamente container_of()
-            
+            node_ptr = list_entry(ptr, node, list); 
             printk(KERN_ALERT "(list %p, value %lu, path %s, prev = %p, next = %p) \n",ptr, node_ptr->inode_cod, node_ptr->path, ptr->prev, ptr->next); 
                         
         }
+        spin_unlock(&lock);
     }
 
 return 0;
@@ -292,7 +295,7 @@ static int the_hook(struct kprobe *ri, struct pt_regs *regs){
                                      
                 if(node_ptr_h->inode_cod  == filp->f_inode->i_ino){ 
                     printk("%s: the file associated to %ld inode has been open \n ", MODNAME, filp->f_inode->i_ino );
-                    //filp_close(filp, NULL);
+                    filp_close(filp, NULL);
                     write_to_file("file test in utils aperto \n ", "./test.txt");
                     goto end;
                 }
