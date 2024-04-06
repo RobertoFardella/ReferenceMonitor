@@ -9,6 +9,7 @@
 #include <linux/unistd.h> // Include per geteuid()
 #include <linux/cred.h>
 #include <linux/kprobes.h>
+#include <asm/page.h>
 #include <linux/errno.h>
 #include <linux/namei.h>
 
@@ -272,8 +273,8 @@ static inline void unprotect_memory(void){
 
 static int the_pre_hook(struct kprobe *ri, struct pt_regs *regs){
     
-    if(rm->state == ON || rm->state == OFF) return 1; //check if the state of reference monitor is the reconfiguration mode
-    if(list_empty(&rm->paths.list)) return 1; //check if the set paths is empty
+    if(rm->state == ON || rm->state == OFF || list_empty(&rm->paths.list)) return 1; //check if the state of reference monitor is the reconfiguration mode or the set paths is empty
+    //if(list_empty(&rm->paths.list)) return 1; //check if the set paths is empty
 
     return 0;
 }
@@ -283,25 +284,20 @@ static int the_hook(struct kprobe *ri, struct pt_regs *regs){
      node * node_ptr_h ;
      struct list_head *ptr_h;
      struct inode *inode;
+     unsigned int f_flags;
    
 
-        filp = (struct file*) regs_return_value(regs);
-         
-        if ((long )filp < 0 ) goto end;
-        
-        
+        filp = (struct file*)regs_return_value(regs);
+         if(IS_ERR(filp)) goto end; // unlikely((unsigned long)ptr >= (unsigned long)-MAX_ERRNO)
+        f_flags = filp->f_flags;
         list_for_each(ptr_h, &rm->paths.list) {
             node_ptr_h = (node*)list_entry(ptr_h, node, list); 
-                                     
-                if(node_ptr_h->inode_cod  == filp->f_inode->i_ino){ 
-                    printk("%s: the file associated to %ld inode has been open \n ", MODNAME, filp->f_inode->i_ino );
-                    filp_close(filp, NULL);
-                    write_to_file("file test in utils aperto \n ", "./test.txt");
-                    goto end;
-                }
                 
-            
-        
+                if((node_ptr_h->inode_cod  == filp->f_inode->i_ino) && !(f_flags & O_RDONLY)){  //controllo se l'accesso è in modalità lettura
+                        
+                        printk("%s: the file associated to %ld inode has been open in write mode\n ", MODNAME, filp->f_inode->i_ino );
+                        goto end;
+                }
     }
 end:
     return 0;
@@ -366,7 +362,6 @@ void cleanup_module(void) {
     
     kfree(rm);
     printk("%s: shutting down\n",MODNAME);
-
 }
   
 
