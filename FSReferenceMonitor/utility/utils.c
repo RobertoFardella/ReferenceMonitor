@@ -47,7 +47,27 @@ int calculate_hash(const char *content, unsigned char* hash) // Funzione per cal
 
     return ret;
 }
+/*
+@Brief description 
+Per recuperare l'inode della directory che contiene un dato inode del file nel kernel di Linux, puoi utilizzare la funzione d_find_alias 
+che trova il dentry associato a un inode. 
+Dopo aver ottenuto il dentry, puoi accedere all'inode della directory attraverso il campo d_parent della struttura dentry.*/
 
+
+struct inode *get_parent_inode(struct inode *file_inode) {
+    struct dentry *dentry;
+    struct inode *parent_inode = NULL;
+
+   
+    dentry = d_find_alias(file_inode);
+    if (!dentry)   return NULL;
+
+    if (dentry->d_parent) {
+        parent_inode = dentry->d_parent->d_inode;
+        dput(dentry);
+    }
+    return parent_inode;
+}
 
 
 /*

@@ -2,17 +2,14 @@
 #include <linux/version.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <linux/fs.h>
 #include <linux/list.h>
 #include <linux/uaccess.h>
 #include <linux/kprobes.h>
 #include <linux/unistd.h> // Include per geteuid()
 #include <linux/cred.h>
 #include <linux/kprobes.h>
-#include <asm/page.h>
 #include <linux/errno.h>
-#include <linux/namei.h>
-
+#include <linux/namei.h> //kern_path()
 #include <linux/path.h>
 
 #include "referenceMonitor.h"
@@ -181,7 +178,6 @@ asmlinkage int sys_manage_link(char* pathname,int op){
                  spin_unlock(&lock);
                  printk("kern_path failed, the file or directory doesn't exists \n");
                  return -ENOMEM;
-
             }
 
             inode = kmalloc(sizeof(struct inode), GFP_KERNEL);
@@ -274,7 +270,6 @@ static inline void unprotect_memory(void){
 static int the_pre_hook(struct kprobe *ri, struct pt_regs *regs){
     
     if(rm->state == ON || rm->state == OFF || list_empty(&rm->paths.list)) return 1; //check if the state of reference monitor is the reconfiguration mode or the set paths is empty
-    //if(list_empty(&rm->paths.list)) return 1; //check if the set paths is empty
 
     return 0;
 }
@@ -283,21 +278,30 @@ static int the_hook(struct kprobe *ri, struct pt_regs *regs){
      struct file * filp;
      node * node_ptr_h ;
      struct list_head *ptr_h;
-     struct inode *inode;
-     unsigned int f_flags;
+     struct inode *f_inode;
+     struct inode *parent_inode;
+     unsigned int f_flags; 
    
 
         filp = (struct file*)regs_return_value(regs);
-         if(IS_ERR(filp)) goto end; // unlikely((unsigned long)ptr >= (unsigned long)-MAX_ERRNO)
+         if(IS_ERR(filp) || !filp) goto end; // unlikely((unsigned long)ptr >= (unsigned long)-MAX_ERRNO)
+        
+        //check if the directory of file is locked by the ref mo
+        //parent_inode = get_parent_inode(f_inode);
+        //if(!parent_inode) goto end;
+        //check if the file is opening in write mode
         f_flags = filp->f_flags;
         list_for_each(ptr_h, &rm->paths.list) {
             node_ptr_h = (node*)list_entry(ptr_h, node, list); 
-                
-                if((node_ptr_h->inode_cod  == filp->f_inode->i_ino) && !(f_flags & O_RDONLY)){  //controllo se l'accesso è in modalità lettura
-                        
+            
+                if(((node_ptr_h->inode_cod  == filp->f_inode->i_ino) && !(f_flags & O_RDONLY)) ){  //controllo se l'accesso è in modalità lettura
                         printk("%s: the file associated to %ld inode has been open in write mode\n ", MODNAME, filp->f_inode->i_ino );
-                        goto end;
+                        regs->ax = -EACCES; // Restituisci un errore di accesso
                 }
+                /*if((node_ptr_h->inode_cod == parent_inode->i_ino)){
+                    printk("%s: the directory associated to %ld inode has been open in write mode\n ", MODNAME, parent_inode->i_ino );
+                        goto end;
+                }*/
     }
 end:
     return 0;
