@@ -165,14 +165,14 @@ asmlinkage int sys_manage_link(char* pathname,int op){
             
             spin_lock(&lock);
 
-            struct list_head * new_node = kmalloc(sizeof(struct list_head), GFP_KERNEL);
-            if (new_node == NULL) {
+            struct list_head * new_node_lh = kmalloc(sizeof(struct list_head), GFP_KERNEL);
+            if (new_node_lh == NULL) {
                 spin_unlock(&lock);
                 printk("allocation of new node into the list failed \n");
                 return -ENOMEM;
             }
         
-            node_ptr = list_entry(new_node, node, list); 
+            node_ptr = list_entry(new_node_lh, node, list); 
             node_ptr->path = pathname;
             if(kern_path(pathname, LOOKUP_RCU , &struct_path ) != 0 ){
                  spin_unlock(&lock);
@@ -181,17 +181,27 @@ asmlinkage int sys_manage_link(char* pathname,int op){
             }
 
             inode = kmalloc(sizeof(struct inode), GFP_KERNEL);
-            ptr = kmalloc(sizeof(struct list_head), GFP_KERNEL);
             if (inode == NULL) {
                 spin_unlock(&lock);
                 printk("allocation of inode into the list failed \n");
                 return -ENOMEM;
             }
             
-            inode =  struct_path.dentry->d_inode;
+            inode =  struct_path.dentry->d_inode; //retrieved inode directory from kern_path
+            //check if inode is already present 
+            node *node_ptr_aux;
+            list_for_each(ptr, &rm->paths.list) {
+            node_ptr_aux = list_entry(ptr, node, list);
+            printk("inode %lu, inode node_ptr_aux->inode_cod %lu", inode->i_ino ,node_ptr_aux->inode_cod);
+            if(node_ptr_aux->inode_cod == inode->i_ino){
+                printk("inode %lu is already present that belongs to %s  \n", node_ptr->inode_cod, node_ptr->path);
+                spin_unlock(&lock);
+                return -EINVAL;
+            }
+            }
             node_ptr->inode_cod = inode->i_ino;
-            list_add_tail(new_node, &rm->paths.list);  // Aggiunta del nuovo nodo alla lista
-            
+            list_add_tail(new_node_lh, &rm->paths.list);  // Aggiunta del nuovo nodo alla lista
+           
             spin_unlock(&lock);
             
         

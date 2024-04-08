@@ -28,6 +28,9 @@ int main(int argc, char** argv){
 	ret = syscall(syscall_index[1], "/home/zudelino/Documenti/GitHub/ReferenceMonitor/FSReferenceMonitor/utility/test.txt", 0 );  
 	ret = syscall(syscall_index[1], "/home/zudelino/Musica", 0 ); 
 	ret = syscall(syscall_index[1], "", 2 );
+	
+	ret = syscall(syscall_index[1], "/home/zudelino/Musica", 0 ); 
+	ret = syscall(syscall_index[1], "", 2 );
 
 	return 0;
 }
