@@ -164,7 +164,6 @@ asmlinkage int sys_manage_link(char* pathname,int op){
     if(op == 0){ //path da aggiungere alla lista
             
             spin_lock(&lock);
-
             struct list_head * new_node_lh = kmalloc(sizeof(struct list_head), GFP_KERNEL);
             if (new_node_lh == NULL) {
                 spin_unlock(&lock);
@@ -201,9 +200,8 @@ asmlinkage int sys_manage_link(char* pathname,int op){
             }
             node_ptr->inode_cod = inode->i_ino;
             list_add_tail(new_node_lh, &rm->paths.list);  // Aggiunta del nuovo nodo alla lista
-           
+        
             spin_unlock(&lock);
-            
         
     }
     else if(op == 1){ //ELIMINAZIONE
@@ -211,8 +209,7 @@ asmlinkage int sys_manage_link(char* pathname,int op){
             printk("%s: the set of paths to protect is empty \n", MODNAME);
             return -EFAULT;
         }
-        
-         
+    
         list_for_each(ptr, &rm->paths.list) {
             node_ptr = list_entry(ptr, node, list); //utilizza internamente container_of()
             if(strcmp(node_ptr->path , pathname) == 0){ //qui andrebbe il path dato dall'utente
@@ -225,7 +222,6 @@ asmlinkage int sys_manage_link(char* pathname,int op){
         }
         printk("%s: path to remove not found \n", MODNAME);
         return -EINVAL;
-
     }
     else{ //ENUMERAZIONE
         spin_lock(&lock);
@@ -288,30 +284,19 @@ static int the_hook(struct kprobe *ri, struct pt_regs *regs){
      struct file * filp;
      node * node_ptr_h ;
      struct list_head *ptr_h;
-     struct inode *f_inode;
-     struct inode *parent_inode;
      unsigned int f_flags; 
    
-
         filp = (struct file*)regs_return_value(regs);
          if(IS_ERR(filp) || !filp) goto end; // unlikely((unsigned long)ptr >= (unsigned long)-MAX_ERRNO)
         
-        //check if the directory of file is locked by the ref mo
-        //parent_inode = get_parent_inode(f_inode);
-        //if(!parent_inode) goto end;
-        //check if the file is opening in write mode
         f_flags = filp->f_flags;
         list_for_each(ptr_h, &rm->paths.list) {
-            node_ptr_h = (node*)list_entry(ptr_h, node, list); 
-            
+            node_ptr_h = (node*)list_entry(ptr_h, node, list);        
                 if(((node_ptr_h->inode_cod  == filp->f_inode->i_ino) && !(f_flags & O_RDONLY)) ){  //controllo se l'accesso è in modalità lettura
                         printk("%s: the file associated to %ld inode has been open in write mode\n ", MODNAME, filp->f_inode->i_ino );
                         regs->ax = -EACCES; // Restituisci un errore di accesso
                 }
-                /*if((node_ptr_h->inode_cod == parent_inode->i_ino)){
-                    printk("%s: the directory associated to %ld inode has been open in write mode\n ", MODNAME, parent_inode->i_ino );
-                        goto end;
-                }*/
+
     }
 end:
     return 0;
