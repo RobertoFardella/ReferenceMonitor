@@ -1,15 +1,20 @@
-#include <unistd.h>
-#include <stdio.h>
-#include <syscall.h>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <fcntl.h>
-
+#include "./include/client.h"
 /**
 comando df o lsblk per visualizzare i filesystem
 coon cat /proc/filesystems vedo quelli che sono supportati dal mio kernel
 */
+
+
+
+void displayMenu() {
+    printf("\nMenu, digitare:\n");
+    printf("1. Stato ON\n");
+    printf("2. Stato OFF\n");
+    printf("3. Stato REC_ON\n");
+    printf("4. Stato REC_OFF\n");
+    printf("0. Esci\n");
+}
+
 int read_file(char *path) {
     int fd;
     char buffer[1024];
@@ -35,7 +40,6 @@ int read_file(char *path) {
     return 0;
 }
 
-
 int write_file(char *path){
 
 	int fd;
@@ -48,7 +52,6 @@ int write_file(char *path){
         return 1;
     }
 
-   
     bytes_written = write(fd, "data", sizeof("data") - 1);  // sizeof(data) include il terminatore '\0'
 
     if (bytes_written == -1) {
@@ -61,7 +64,6 @@ int write_file(char *path){
     return 0;
 }
 
-
 int main(int argc, char** argv){
 
 	/*if(argc < 2){
@@ -70,20 +72,48 @@ int main(int argc, char** argv){
         }*/
         
 	int ret ;
-	char *pw  ;
+    int choose;
+	char *pw = malloc(sizeof(char)*64);
 	int syscall_index[5] = {134,156};
 	int add = 1;
-	pw = "carabiniere_a_cavallo";
-	size_t size = strlen(pw);
-	//enum rm_state state;
+	size_t size_pw ;
+	enum rm_state state  = ON;
 
-	ret = syscall(syscall_index[1], "/home/zudelino/Documenti/GitHub/ReferenceMonitor/FSReferenceMonitor/utility/rcu_list.c", 0 );  
-	ret = syscall(syscall_index[1], "/home/zudelino/Musica", 0 ); 
-	ret = syscall(syscall_index[1], "", 2 );
-	ret = syscall(syscall_index[1], "/home/zudelino/Musica", 0 );
-	ret = syscall(syscall_index[1], "", 2 );
-	write_file("/home/zudelino/Documenti/GitHub/ReferenceMonitor/FSReferenceMonitor/utility/rcu_list.c");
-    read_file("/home/zudelino/Documenti/GitHub/ReferenceMonitor/FSReferenceMonitor/utility/rcu_list.c");
+    displayMenu();
+    printf("selezionare un input valido\n");
+init:
+    scanf("%d", &choose);
+    if(choose < 0 || choose > 4){ 
+        printf("selezionare un input valido,riprova\n");
+        goto init;
+    }
+    while(1){   
+        displayMenu();
+        printf("enter a password: \n");
+        fgets(pw,64, stdin);
+        // Rimuovi il newline dalla fine della stringa
+        pw[strcspn(pw, "\n")] = '\0';
+        size_pw = strlen(pw);
+        ret = syscall(syscall_index[0], state, pw, size_pw);
+        
+        if(ret == -1){
+            perror("Errore nella syscall_switch_state");
+            switch (errno)
+            {
+            case -EPERM:
+                printf("livello di privilegi insufficiente\n");
+                break;
+            case -EINVAL:
+                printf("lo stato inserito e' quello corrente\n");
+                break;
+            case -ENOEXEC:
+                printf("password sbagliata, riprova\n");
+                break;
+            default:
+                break;
+            }
+        }
+    }
 	return 0;
 }
 

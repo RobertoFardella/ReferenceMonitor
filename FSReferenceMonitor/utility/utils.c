@@ -58,7 +58,6 @@ struct inode *get_parent_inode(struct inode *file_inode) {
     struct dentry *dentry;
     struct inode *parent_inode = NULL;
 
-   
     dentry = d_find_alias(file_inode);
     if (!dentry)   return NULL;
 
@@ -68,6 +67,41 @@ struct inode *get_parent_inode(struct inode *file_inode) {
     }
     return parent_inode;
 }
+
+/*
+node* lookup_path_node_blacklist(char* pathname){
+    node * node_ptr ;
+    struct list_head *ptr;
+    list_for_each(ptr, &rm->paths.list) {
+            node_ptr = list_entry(ptr, node, list); //utilizza internamente container_of()
+            if(strcmp(node_ptr->path , pathname) == 0){ //qui andrebbe il path dato dall'utente
+                return node_ptr;
+            }           
+        }
+    return NULL;
+}
+
+node* lookup_inode_node_blacklist(struct inode* inode, struct list_head* head){
+     node* node_ptr;
+     struct list_head* ptr;
+    list_for_each(ptr, head) {
+            node_ptr = list_entry(ptr, node, elem);
+            if(node_ptr->inode_cod == inode->i_ino){                
+                return node_ptr;
+            }
+    }
+    return NULL;
+}
+*/
+
+
+
+
+
+
+
+
+
 
 
 /*

@@ -19,6 +19,8 @@ rmmod:
 	#make -f Single_fs/Makefile remote-rmmod
 test:
 	sudo make -f user/Makefile all
+switch_state:
+	sudo make -f user/Makefile switch_state
 
 filesystem-setup:
 	make -f Single_fs/Makefile ex-create-fs
