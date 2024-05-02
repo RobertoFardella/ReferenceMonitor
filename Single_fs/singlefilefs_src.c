@@ -151,7 +151,9 @@ static int singlefilefs_init(void) {
 static void singlefilefs_exit(void) {
 
     int ret;
-
+    
+    //filp_close(destFile, NULL); qui chiudo il file unico
+    
     //unregister filesystem
     ret = unregister_filesystem(&onefilefs_type);
 

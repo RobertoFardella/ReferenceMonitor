@@ -4,6 +4,7 @@ singlefilefs-objs += singlefilefs_src.o file.o dir.o
 all:
 	gcc singlefilemakefs.c -o singlefilemakefs
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+	sudo insmod singlefilefs.ko
 
 load-FS-driver:
 	sudo insmod singlefilefs.ko
@@ -13,7 +14,7 @@ unload-FS-driver:
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-	rm singlefilemakefs
+	
 
 
 create-fs:

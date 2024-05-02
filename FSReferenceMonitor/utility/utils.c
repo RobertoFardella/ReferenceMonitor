@@ -94,38 +94,25 @@ node* lookup_inode_node_blacklist(struct inode* inode, struct list_head* head){
 }
 */
 
+char *get_path_from_dentry(struct dentry *dentry) {
+
+	char *buffer, *full_path;
+
+        buffer = (char *)__get_free_page(GFP_KERNEL);
+        if (!buffer)
+                return NULL;
+
+        full_path = dentry_path_raw(dentry, buffer, PATH_MAX);
+        if (IS_ERR(full_path)) {
+                printk("dentry_path_raw failed\n");
+                free_page((unsigned long)buffer);
+                return NULL;
+        } 
 
 
-
-
-
-
-
-
-
-
-/*
-    struct key *keyring_alloc(const char *description, uid_t uid, gid_t gid,
-                          const struct cred *cred,
-                          key_perm_t perm,
-                          struct key_restriction *restrict_link,
-                          unsigned long flags,
-                          struct key *dest);
-    */
-    //key_ref_t password_key;
-    //struct key *key;
-    //key = kmalloc(sizeof(struct key), GFP_KERNEL);
-    //validate_key(keyring_alloc("referenceMonitor", (kuid_t)0, (kgid_t)0, cred, KEY_POS_VIEW | KEY_POS_READ | KEY_POS_SEARCH, NULL, KEY_ALLOC_BYPASS_RESTRICTION,  key));
-
-    //password_key = make_key_ref(key,true);
-    // Crea una chiave logon per memorizzare l'hash della password
-    /*password_key =  key_create_or_update(password_key, "logon", "password_key", hash, sizeof(hash), KEY_POS_VIEW | KEY_POS_READ | KEY_POS_SEARCH, 0);
-    if (password_key == NULL) {
-        printk(KERN_ERR "Failed to create key: %ld\n", -1);
-        ret = -1;
-        kfree(hash);
-        return ret;
-    }*/
+        free_page((unsigned long)buffer);
+        return full_path;
+}
 
 
 

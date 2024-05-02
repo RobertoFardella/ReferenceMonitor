@@ -56,8 +56,13 @@ static int onefilefs_iterate(struct file *file, struct dir_context* ctx) {
 
 }
 
-//add the iterate function in the dir operations
 const struct file_operations onefilefs_dir_operations = {
     .owner = THIS_MODULE,
     .iterate = onefilefs_iterate,
 };
+/*
+Il file `fs/readdir.c` è un componente del kernel Linux e contiene il codice per l'implementazione della funzione `readdir()` nel sistema di file. Questa funzione è utilizzata per leggere le voci (file e directory) all'interno di una directory specifica. Quando un programma richiama `readdir()`, il sistema operativo esegue il codice in `fs/readdir.c` per ottenere le informazioni sui file e sulle directory presenti nella directory specificata.
+
+All'interno di `fs/readdir.c`, troverai il codice che gestisce le operazioni di lettura delle voci di directory, l'inoltro di queste informazioni al chiamante e la gestione degli errori e delle eccezioni che potrebbero verificarsi durante l'operazione di lettura della directory.
+
+In sintesi, `fs/readdir.c` serve a implementare il comportamento della funzione `readdir()` nel kernel Linux, consentendo ai programmi utente di ottenere informazioni sui file e sulle directory presenti in una directory specifica nel sistema di file.*/
