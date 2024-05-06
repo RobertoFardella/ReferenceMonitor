@@ -24,20 +24,20 @@ int write_to_file(char * content, char * filepath ) {
     return ret;
 }
 
-int calculate_hash(const char *content, unsigned char* hash) // Funzione per calcolare l'hash della password
+int calculate_hash(const char *content, unsigned char* hash) 
 {
     struct crypto_shash *tfm;
     struct shash_desc *desc;
-    int ret = -ENOMEM;
+    int ret;
     
     tfm = crypto_alloc_shash("sha256", 0, 0);
     if (IS_ERR(tfm))
         return PTR_ERR(tfm);
 
-    desc = kmalloc(sizeof(*desc), GFP_KERNEL);
+    desc = kmalloc(sizeof(desc), GFP_KERNEL);
     if (!desc) {
         crypto_free_shash(tfm);
-        return ret;
+        return -ENOMEM;
     }
     desc->tfm = tfm;
     ret = crypto_shash_digest(desc, content, strlen(content), hash);//return 0 if the message digest creation was successful; < 0 if an error occurred
@@ -47,12 +47,6 @@ int calculate_hash(const char *content, unsigned char* hash) // Funzione per cal
 
     return ret;
 }
-/*
-@Brief description 
-Per recuperare l'inode della directory che contiene un dato inode del file nel kernel di Linux, puoi utilizzare la funzione d_find_alias 
-che trova il dentry associato a un inode. 
-Dopo aver ottenuto il dentry, puoi accedere all'inode della directory attraverso il campo d_parent della struttura dentry.*/
-
 
 struct inode *get_parent_inode(struct inode *file_inode) {
     struct dentry *dentry;
@@ -66,6 +60,12 @@ struct inode *get_parent_inode(struct inode *file_inode) {
         dput(dentry);
     }
     return parent_inode;
+}
+
+void password_setup(ref_mon *rm){
+    int ret;
+    char *pw;
+
 }
 
 /*
@@ -93,6 +93,24 @@ node* lookup_inode_node_blacklist(struct inode* inode, struct list_head* head){
     return NULL;
 }
 */
+/*
+void logging_information(ref_mon* rm, struct log_info* log_info){
+    packed_work pkd_work;
+    struct work_struct work;
+    const struct cred *cred;
+    cred = current_cred();
+    printk("ok\n" );
+    pkd_work.log_info.real_uid = cred->uid;
+    pkd_work.log_info.effect_uid = cred->euid;
+    pkd_work.log_info.tid = current->pid;
+    pkd_work.log_info.tgid = current->tgid;
+    pkd_work.log_info.pathname =log_info->pathname;
+    printk("ok\n" );
+    INIT_WORK(&work, deferred_logger_handler);
+    queue_work(rm->queue_work, &work);
+    printk("ok\n" );
+    return;
+}*/
 
 char *get_path_from_dentry(struct dentry *dentry) {
 
@@ -109,12 +127,11 @@ char *get_path_from_dentry(struct dentry *dentry) {
                 return NULL;
         } 
 
-
         free_page((unsigned long)buffer);
         return full_path;
 }
 
-
+ 
 
     /*qui provavo a fa la scrittura sul vfs cust
     */

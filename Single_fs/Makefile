@@ -28,21 +28,14 @@ mount-fs:
 destroy-fs:
 	sudo umount ./mount
 
-ex-create-fs:
-	dd bs=4096 count=100 if=/dev/zero of=./Single_fs/image
-	-f ./Single_fs/singlefilefs ./Single_fs/image 
-	mkdir ./Single_fs/mount
-	
-ex-mount-fs:
-	 sudo mount -o loop -t singlefilefs ./Single_fs/image ./Single_fs/mount/
-
-
-#digitare lsblk
-
-#image è il parametor passato allo script di rimepimento del filesystem
+remote-all:
+	gcc Single_fs/singlefilemakefs.c -o ./Single_fs/singlefilemakefs
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD)/Single_fs modules
+	sudo insmod Single_fs/singlefilefs.ko
 
 remote-build:
-	 make -C /lib/modules/$(shell uname -r)/build M=$(PWD)/Single_fs modules
+	gcc Single_fs/singlefilemakefs.c -o ./Single_fs/singlefilemakefs
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD)/Single_fs modules
 
 remote-insmod:
 	 sudo insmod Single_fs/singlefilefs.ko
@@ -50,4 +43,16 @@ remote-insmod:
 remote-clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD)/Single_fs  clean
 remote-rmmod:
-	sudo rmmod singlefilefs.ko
+	sudo rmmod Single_fs/singlefilefs.ko
+
+ex-create-fs:
+	dd bs=4096 count=100 if=/dev/zero of=./Single_fs/image
+	 ./Single_fs/singlefilemakefs ./Single_fs/image 
+	 -f mkdir ./Single_fs/mount
+	
+ex-mount-fs:
+	 sudo mount -o loop -t singlefilefs ./Single_fs/image ./Single_fs/mount/
+
+
+#digitare lsblk per vedere i dispositivi montati e i loro path 
+
