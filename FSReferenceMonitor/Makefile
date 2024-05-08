@@ -10,7 +10,7 @@ clean:
 remote-build:
 	 make -C /lib/modules/$(shell uname -r)/build M=$(PWD)/FSReferenceMonitor modules
 remote-insmod:
-	 sudo insmod FSReferenceMonitor/reference_monitor_main.ko systemcall_table=$(A) free_entries=$(array_free_entries)
+	 sudo insmod FSReferenceMonitor/reference_monitor_main.ko systemcall_table=$(A) free_entries=$(array_free_entries) password=$(PW)
 remote-clean:
 	 make -C /lib/modules/$(shell uname -r)/build M=$(PWD)/FSReferenceMonitor clean
 remote-rmmod:
