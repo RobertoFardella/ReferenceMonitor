@@ -28,13 +28,7 @@ enum rm_state displayMenuAndGetChoice() {
         printf("Stato non riconosciuto.\n");
     }
 }
-int main(int argc, char** argv){
-
-	/*if(argc < 2){
-                printf("usage: prog syscall-num [nsg-body]\n");
-                return EXIT_FAILURE;
-        }*/
-        
+int main(int argc, char** argv){     
 	int ret ;
 	char *pw = malloc(sizeof(char)*64);
 	int syscall_index[5] = {134,156};
@@ -51,10 +45,10 @@ init:
         printf("enter a password:");
         scanf("%s", pw);
         // Rimuovi il newline dalla fine della stringa
-        //pw[strcspn(pw, "\n")] = '\0';
+        pw[strcspn(pw, "\n")] = '\0';
         size_pw = strlen(pw);
-        ret = syscall(syscall_index[0], state, pw, size_pw, 1);
-        
+        ret = syscall(syscall_index[0], state, pw);
+        free(pw);
         if(ret == -1){
             perror("\nErrore nella syscall_switch_state");
             switch (errno)
@@ -72,6 +66,7 @@ init:
                 break;
             } 
         }
+
 	return 0;
 }
 

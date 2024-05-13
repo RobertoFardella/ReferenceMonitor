@@ -24,7 +24,7 @@ mount-fs:
 	sudo mount -o loop -t singlefilefs image ./mount/
 
 destroy-fs:
-	sudo umount ./mount
+	sudo -f -l umount ./mount
 
 ##regole chiamate dal makefile principale
 
@@ -43,7 +43,7 @@ remote-insmod:
 
 remote-clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD)/Single_fs clean
-	rm Single_fs/singlefilemakefs.o
+	rm Single_fs/singlefilemakefs
 
 remote-rmmod:
 	sudo rmmod Single_fs/singlefilefs.ko
@@ -54,10 +54,10 @@ ex-create-fs:
 	-f mkdir ./Single_fs/mount
 	
 ex-mount-fs: 
-	sudo mount -o loop -t singlefilefs ./Single_fs/image ./Single_fs/mount/	 ##non fungeeeeeee
+	sudo mount -o loop -t singlefilefs ./Single_fs/image ./Single_fs/mount/	
 
  remote-destroy-fs:
-	sudo umount ./Single_fs/mount
+	sudo umount -f -l ./Single_fs/mount
 
 #digitare lsblk per vedere i dispositivi montati e i loro path 
 

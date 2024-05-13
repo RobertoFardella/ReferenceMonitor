@@ -18,15 +18,21 @@ insmod:
 	sudo make -f Linux-sys_call_table-discoverer/Makefile remote-insmod
 	sudo make -f FSReferenceMonitor/Makefile remote-insmod
 rmmod:
-	make -f Single_fs/Makefile remote-destroy-fs
-	make -f Single_fs/Makefile remote-rmmod
 	sudo make -f Linux-sys_call_table-discoverer/Makefile remote-rmmod
 	sudo make -f FSReferenceMonitor/Makefile remote-rmmod
+	make -f Single_fs/Makefile remote-destroy-fs
+	make -f Single_fs/Makefile remote-rmmod
 	
-test:
-	sudo make -f user/Makefile all
+#command to run the test cases
+
+testing:
+	sudo make -f test/Makefile all
+
+init_blacklist: 
+	sudo make -f test/Makefile init_blacklist
+	
 switch_state:
-	sudo make -f user/Makefile switch_state
+	sudo make -f test/Makefile switch_state
 
 filesystem-setup:
 	make -f Single_fs/Makefile ex-create-fs

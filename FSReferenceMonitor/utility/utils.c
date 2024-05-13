@@ -1,27 +1,7 @@
 #include <linux/key.h>
 #include <linux/crypto.h>
 #include <crypto/hash.h>
-#include <linux/unistd.h> 
 #include "./../referenceMonitor.h"
-
-int write_to_file(char * content, char * filepath ) {
-    struct file *file;
-    int ret = 0;
-    size_t len = strlen(content);
-
-    file = filp_open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0777);
-    if (IS_ERR(file)) {
-        printk(KERN_ERR "Impossibile aprire il file per la scrittura\n");
-        return -1;
-    }
-    ret = kernel_write(file, content, len, &file->f_pos);
-    if (ret < 0) {
-        printk(KERN_ERR "Errore durante la scrittura sul file\n");
-    }
-    filp_close(file, NULL);
-
-    return ret;
-}
 
 int calculate_crypto_hash(const char *content, unsigned char* hash) 
 {
@@ -64,12 +44,12 @@ char *file_content_fingerprint(char *pathname) {
                 return NULL;
         }
 
-        
-        /*file = filp_open(pathname);
+        file = filp_open(pathname, O_RDONLY, 0);
         if (IS_ERR(file)) {
+                printk("%s: file not opened correctly, hash failed\n", MODNAME);
                 crypto_free_shash(hash_tfm);
-                return PTR_ERR(file);
-        }*/
+                return NULL;
+        }
 
         /* hash descriptor allocation */
         desc = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(hash_tfm), GFP_KERNEL);
@@ -124,7 +104,7 @@ struct inode *get_parent_inode(struct inode *file_inode) {
     struct dentry *dentry;
     struct inode *parent_inode = NULL;
 
-    if(!file_inode) return -EINVAL;
+    if(!file_inode) return NULL;
 
     dentry = d_find_alias(file_inode);
     if(!dentry)   return NULL;
@@ -136,33 +116,19 @@ struct inode *get_parent_inode(struct inode *file_inode) {
     return parent_inode;
 }
 
-char* password_hash( char* pw){
-    char* pw_buffer;
+char* password_hash(char* pw){
     unsigned char *pw_digest = kmalloc(sizeof(SHA256_DIGEST_SIZE * 2 + 1), GFP_KERNEL); 
     char buffer[SHA256_DIGEST_SIZE * 2 + 1];
-    int ret,i, offset = 0 ,size = strlen(pw);
-    void* addr;
+    int ret,i, offset = 0;
     
-
-    addr = (void*)get_zeroed_page(GFP_KERNEL);
-    if (!addr) {
-        printk("kernel page allocation failed\n");
-        return NULL;
-    }
-
-    ret = copy_from_user((char*)addr, pw,size);
-    pw_buffer= kstrndup((char*)addr, size - ret, GFP_KERNEL);
-    pw_buffer[size - ret] = '\0';
-    
-    free_pages((unsigned long)addr,0);
-
     printk("pw inserita dall'utente: %s", pw);
     //encryption password phase
 
-    ret = calculate_crypto_hash(pw_buffer, pw_digest);
+    ret = calculate_crypto_hash(pw, pw_digest);
 
     if(ret < 0){
         printk("%s: crypto digest not computed\n", MODNAME);
+        kfree(pw_digest);
         return NULL;
     }
 
@@ -172,10 +138,8 @@ char* password_hash( char* pw){
 
     buffer[offset] = '\0'; 
     
-    kfree(pw_buffer);
     kfree(pw_digest);
-    pw_digest = kstrdup(buffer, GFP_KERNEL);
-    return pw_digest;
+    return kstrdup(buffer, GFP_KERNEL);
 }
 
 node* lookup_inode_node_blacklist(struct inode* inode, struct list_head* head){
@@ -189,7 +153,6 @@ node* lookup_inode_node_blacklist(struct inode* inode, struct list_head* head){
     }
     return NULL;
 }
-
 
 void logging_information(ref_mon* rm, struct log_info* log_info){
     static packed_work pkd_work;
@@ -223,4 +186,40 @@ char *get_path_from_dentry(struct dentry *dentry) {
 
         free_page((unsigned long)buffer);
         return full_path;
+}
+
+
+
+char *safe_copy_from_user(char* src_buffer){
+    int ret;
+    void *addr;
+    char* pw_buffer;
+    int size;
+    size = strlen(src_buffer);
+
+    addr = (void*)get_zeroed_page(GFP_KERNEL);
+    if (!addr) {
+        printk("%s: kernel page allocation failed\n", MODNAME);
+        return NULL;
+    }
+
+    ret = copy_from_user((char*)addr, src_buffer,size);
+    pw_buffer = kstrndup((char*)addr, size - ret, GFP_KERNEL);
+    if(!pw_buffer) {
+        printk("%s: kernel memory allocation failed\n", MODNAME);
+        return NULL;
+    }
+    pw_buffer[size - ret] = '\0';
+
+    printk("%s", pw_buffer);
+    
+
+    /*if(size == 0){
+        printk("%s:user buffer is empty\n", MODNAME);
+        return NULL;
+    }*/
+    
+    free_pages((unsigned long)addr,0);
+
+    return pw_buffer;
 }

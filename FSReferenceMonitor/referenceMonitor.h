@@ -76,10 +76,10 @@ void deferred_logger_handler(struct work_struct* data);
 extern void logging_information(ref_mon* rm, struct log_info* log_info);
 char *file_content_fingerprint(char *filename);
 extern int calculate_crypto_hash(const char *content, unsigned char* hash);
-extern int write_to_file(char * content, char * filepath );
 extern struct inode *get_parent_inode(struct inode *file_inode);
 extern char *get_path_from_dentry(struct dentry *dentry);
 extern char* password_hash(char* pw);
 extern node* lookup_inode_node_blacklist(struct inode* inode,struct list_head* ptr);
+extern char *safe_copy_from_user(char* src_buffer);
 
 

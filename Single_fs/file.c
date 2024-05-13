@@ -55,86 +55,38 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
         mutex_unlock(&offset_mutex);
 	    return -EIO;
     }
-    ret = copy_to_user(buf,bh->b_data + offset, len); //La funzione copy_to_user ritorna il numero di byte che non sono stati copiati correttamente. 
-                                                        //Questo valore può essere utilizzato per determinare se la copia è avvenuta completamente o se si sono verificati errori durante il trasferimento dei dati.
+    ret = copy_to_user(buf,bh->b_data + offset, len);  
+                                                       
     *off += (len - ret); //incremento di quanti byte effettivamente ho scritto sul file
     mutex_unlock(&offset_mutex);
     brelse(bh);
     return len - ret;
 
 }
-/*
 
-struct iov_iter {
-	u8 iter_type;
-	bool nofault;
-	bool data_source;
-	size_t iov_offset;
-	size_t count;
-	union {
-		const struct iovec *iov;
-		const struct kvec *kvec;
-		const struct bio_vec *bvec;
-		struct xarray *xarray;
-		struct pipe_inode_info *pipe;
-	};
-	union {
-		unsigned long nr_segs;
-		struct {
-			unsigned int head;
-			unsigned int start_head;
-		};
-		loff_t xarray_start;
-	};
-};
-
-The type field describes the type of the iterator. It is a bitmask containing, among other things, either READ or WRITE 
-depending on whether data is being read into the iterator or written from it. The data direction, thus, refers not to
- the iterator itself, but to the other part of the data transaction; an iov_iter created with a type of READ will be written to.
-
-Beyond that, iov_offset contains the offset to the first byte of interesting data in the first iovec pointed to by iov. 
-The total amount of data pointed to by the iovec array is stored in count, while the number of iovec structures is stored in nr_segs. 
-Note that most of these fields will change as code "iterates" through the buffer. 
-They describe a cursor into the buffer, rather than the buffer as a whole.
-
-struct kiocb {
-	struct file		*ki_filp;
-
-	// The 'ki_filp' pointer is shared in a union for aio 
-	randomized_struct_fields_start
-
-	loff_t			ki_pos;
-	void (*ki_complete)(struct kiocb *iocb, long ret, long ret2);
-	void			*private;
-	int			ki_flags;
-	u16			ki_hint;
-	u16			ki_ioprio; 
-	union {
-		unsigned int		ki_cookie; 
-		struct wait_page_queue	*ki_waitq; // for async buffered IO 
-	};
-
-	randomized_struct_fields_end
-};
-
-*/
 ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
   	struct file *file = iocb->ki_filp;
 	struct inode *filp_inode = file->f_inode;
 	loff_t blk_offset, size_file;
     int blk_to_write;
     struct block_device *bdev; 
+    struct buffer_head *bh;
 	ssize_t ret;
-    int count = from->count; //lunghezza del buffer da scrivere
-    char* buffer_data = kmalloc(count, GFP_KERNEL);
+    int payload_size = from->count; //lunghezza del buffer da scrivere
+    char* buffer_data;
+
 
     mutex_lock(&offset_mutex);
+    buffer_data = kmalloc(payload_size, GFP_KERNEL);
+    if(!buffer_data) return -ENOMEM;
+
+    
 iter:
     size_file = i_size_read(filp_inode);
     blk_offset = size_file % DEFAULT_BLOCK_SIZE;    //determine the block level offset for the operation
     blk_to_write = size_file / DEFAULT_BLOCK_SIZE + 2; //the value 2 accounts for superblock and file-inode on device
     
-    struct buffer_head *bh = (struct buffer_head *)sb_bread(file->f_path.dentry->d_inode->i_sb, blk_to_write);
+    bh = (struct buffer_head *)sb_bread(file->f_path.dentry->d_inode->i_sb, blk_to_write);
     if(!bh){
 	    return -EIO;
     }
@@ -146,39 +98,40 @@ iter:
 
 	if (!iov_iter_count(from)) //Check if there is data to write
 		return 0;
-    
-    //file_update_time(filp);
 
-    ret = copy_from_iter((void*)buffer_data, (size_t) count, from);
-    if(ret != count) {
+    ret = copy_from_iter((void*)buffer_data, (size_t) payload_size, from);
+    if(ret != payload_size) {
         printk("%s: all bytes are not copied", MOD_NAME);
         return -2;
     }
 
      //append operation
-
-    if(count > DEFAULT_BLOCK_SIZE - blk_offset){ //se la dimensione del buffer da scrivere è superiore allo spazio vuoto all'intenro di un blocco
+    if(payload_size > DEFAULT_BLOCK_SIZE - blk_offset){ //se la dimensione del buffer da scrivere è superiore allo spazio vuoto all'intenro di un blocco
         //fill all residuals of the current block
         memcpy(bh->b_data + blk_offset, buffer_data,  DEFAULT_BLOCK_SIZE - blk_offset);
         blk_to_write++; //advance block of device
         i_size_write(filp_inode, size_file + DEFAULT_BLOCK_SIZE - blk_offset);
-        count -=  DEFAULT_BLOCK_SIZE - blk_offset;
-        mark_buffer_dirty(bh);
-        brelse(bh);
+        payload_size -=  DEFAULT_BLOCK_SIZE - blk_offset;
+         mark_buffer_dirty(bh);
         goto iter;
         
     }
     else{
-        memcpy(bh->b_data + blk_offset, buffer_data, count);
-        i_size_write(filp_inode, size_file + count);
+        memcpy(bh->b_data + blk_offset, buffer_data, payload_size);
+        i_size_write(filp_inode, size_file + payload_size);
+        mark_buffer_dirty(bh);
+        
     }
-    mark_buffer_dirty(bh);
     brelse(bh);
-
+    kfree(buffer_data);
     mutex_unlock(&offset_mutex);
-    brelse(bh);                                   
    
 	return ret;    
+}
+
+ssize_t onefilefs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *off){
+    printk("write op invocated\n");
+    return 1;
 }
 
 struct dentry *onefilefs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags) {
@@ -248,30 +201,6 @@ const struct inode_operations onefilefs_inode_ops = {
 const struct file_operations onefilefs_file_operations = {
     .owner = THIS_MODULE,
     .read = onefilefs_read,
-    .write_iter = onefilefs_write_iter, 
+    .write_iter = onefilefs_write_iter,
+    //.write = onefilefs_write, kernel_write not supported!
 };
-
-
-
-/**
- * sb_bread internally calls __bread_gfp(), that reads a specified block and returns the bh
- *  @bdev: the block_device to read from
- *  @block: number of block
- *  @size: size (in bytes) to read
- *  @gfp: page allocation flag
- *
- *  Reads a specified block, and returns buffer head that contains it.
- *  The page cache can be allocated from non-movable area
- *  not to prevent page migration if you set gfp to zero.
-
- *  It returns NULL if the block was unreadable.
- */
-
-
-/*
- * brelse Decrementa il conteggio dei riferimenti di una buffer_head. Se tutti i buffer associati a una pagina
- * hanno un conteggio dei riferimenti pari a zero, sono puliti e sbloccati, e se la pagina è pulita
- * e sbloccata, allora try_to_free_buffers() potrebbe rimuovere i buffer dalla pagina
- * in preparazione per la liberazione di memoria (a volte, raramente, i buffer vengono rimossi da
- * una pagina ma alla fine non viene liberata, e i buffer possono essere riallocati successivamente).
- */
