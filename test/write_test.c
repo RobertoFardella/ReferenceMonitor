@@ -2,23 +2,28 @@
 /**
  * this program write into a file  
 */
-int main() {
-    FILE *file_ptr;
-    char text[] = "ciao a tutti\n";
-    const char *file_name =  "/home/zudelino/Musica/a.txt";
+int main(int argc, char** argv) {
 
-    
-    file_ptr = fopen(file_name, "w");
+
+    FILE *file_ptr;
+    //char text[] = "ciao a tutti\n";
+    //const char *file_name =  "/home/zudelino/Musica/a.txt";
+
+    if (argc != 3) {
+		fprintf(stderr, "Usage: %s <path file> <text>\n", argv[0]);
+		return 1;
+	}
+
+    file_ptr = fopen(argv[1], "w");
     if (file_ptr == NULL) {
         printf("Errore nell'apertura del file!\n");
         return 0;
     }
-
     
-    fprintf(file_ptr, "%s", text);
+    fprintf(file_ptr, "%s", argv[2]);
 
     fclose(file_ptr);
 
-    printf("Testo scritto correttamente nel file '%s'\n", file_name);
+    printf("Testo scritto correttamente nel file '%s'\n", argv[1]);
     return 0;
 }

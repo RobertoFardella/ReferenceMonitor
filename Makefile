@@ -25,7 +25,7 @@ rmmod:
 	
 #command to run the test cases
 
-testing:
+all_testing:
 	sudo make -f test/Makefile all
 
 init_blacklist: 
@@ -33,6 +33,41 @@ init_blacklist:
 	
 switch_state:
 	sudo make -f test/Makefile switch_state
+
+add_path_blacklist:
+	sudo make -f test/Makefile add_path_blacklist
+
+rm_path_blacklist:	
+	sudo make -f test/Makefile rm_path_blacklist
+
+print_blacklist:
+	sudo make -f test/Makefile print_blacklist
+
+write_test:
+	sudo make -f test/Makefile write_test
+
+mkdir_test:
+	sudo make -f test/Makefile mkdir_test
+
+rmdir_test:
+	sudo make -f test/Makefile rmdir_test
+
+mknod_test:
+	sudo make -f test/Makefile mknod_test
+
+setattr_test:
+	sudo make -f test/Makefile setattr_test
+
+rename_test:
+	sudo make -f test/Makefile rename_test
+
+symblink_test:
+	sudo make -f test/Makefile symblink_test
+
+unlink_test:
+	sudo make -f test/Makefile unlink_test
+
+#command to setup the filesystem
 
 filesystem-setup:
 	make -f Single_fs/Makefile ex-create-fs

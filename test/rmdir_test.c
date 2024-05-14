@@ -1,17 +1,18 @@
 #include "./include/client.h"
 
-
 int main(int argc, char** argv){
-    int ret;
-    mode_t permissions = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH; // Esempio: permessi 644
+	int ret;
+
     if (argc != 2) {
 		fprintf(stderr, "Usage: %s <path file>\n", argv[0]);
 		return 1;
 	}
-    ret = chmod(argv[1], permissions);
+    ret = rmdir(argv[1]);
     if(ret){
-        printf("chmod error\n");
+        printf("rmdir failed\n");
         return -1;
     }
-    return 0;
+
+    printf("rmdir %s executed\n", argv[1]);
+	return 0;
 }

@@ -62,7 +62,6 @@ declare_kretprobe(security_inode_setattr_probe, inode_setattr_pre_hook, the_hook
 __SYSCALL_DEFINEx(2,_switch_state, enum rm_state, state, char* , pw){
 #else
 asmlinkage int sys_switch_state(enum state, char* pw){
-
 #endif
     int ret, i, offset = 0;
     const struct cred *cred = current_cred();
@@ -155,8 +154,10 @@ asmlinkage int sys_manage_link(char* buffer_path,int op){
         return -EINVAL;    
     }
 
+    if(op == 2) goto print;
+
     pathname = safe_copy_from_user(buffer_path);
-    if(!pathname && op != 2){
+    if(!pathname){
         printk("%s: error in safe_copy_from_user\n", MODNAME);
         return -ENOMEM;
     }
@@ -167,6 +168,7 @@ asmlinkage int sys_manage_link(char* buffer_path,int op){
         return -ENOMEM;
     }
 
+print:
     spin_lock(&rm->lock);
 
     if(op == 0){ //add path
@@ -187,7 +189,7 @@ asmlinkage int sys_manage_link(char* buffer_path,int op){
             }
             
             inode =  struct_path.dentry->d_inode; //retrieve inode from kern_path
-            kfree(pathname);
+            
             /*check if inode is already present*/
             if(list_empty(&rm->blk_head_node.elem)) goto ok; //if balcklist is empty, no check 
             
@@ -207,10 +209,9 @@ ok:
             node_ptr->inode_cod = inode->i_ino;
             node_ptr->inode_blk = inode;
             node_ptr->dentry_blk = struct_path.dentry;
-
+            kfree(pathname);
             list_add_tail(new_node_lh, &rm->blk_head_node.elem);  // Adding the new node to the list (list_head)
             spin_unlock(&rm->lock);
-
     }
     else if(op == 1){ //remove path
         if(list_empty(&rm->blk_head_node.elem)){
@@ -227,7 +228,7 @@ ok:
                 spin_unlock(&rm->lock);
                 printk("%s: path removed correctly \n", MODNAME);
                 return 0;
-            }           
+            }
         }
         kfree(pathname);
         spin_unlock(&rm->lock);
@@ -281,10 +282,9 @@ static inline void unprotect_memory(void){
     write_cr0_forced(cr0 & ~X86_CR0_WP);
 }
 
-
 /**
  * int (*inode_permission)(struct inode *inode, int mask);
- * Check permission before accessing an inode. 
+ * Check permission before accessing an inode (Write access must be blocked here ). 
  * This hook is called by the existing Linux permission function, so a security module 
  * can use it to provide additional checking for existing Linux permission checks. 
  * Notice that this hook is called when a file is opened (as well as many other operations), whereas the 
@@ -292,6 +292,7 @@ static inline void unprotect_memory(void){
  * inode contains the inode structure to check. 
  * mask contains the permission mask. Return 0 if permission is granted.
 */
+
  int security_file_open_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     struct file* file;
     file = (struct file*)regs->di;
@@ -329,8 +330,8 @@ dir contains inode structure of the parent of the new file.
 dentry contains the dentry structure for the file to be created.
  mode contains the file mode of the file to be created.
 Returns 0 if permission is granted.
-
 */
+
 int inode_create_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     struct inode* parent_inode = (struct inode*)regs->di;
     struct dentry* parent_dentry;
@@ -359,11 +360,8 @@ leave:
 /*int security_inode_link(struct dentry *old_dentry, struct inode *dir, struct dentry *new_dentry);
    called in vfs_link - create a new link
  * @old_dentry:	object to be linked
- * @mnt_userns:	the user namespace of the mount
  * @dir:	new parent
  * @new_dentry:	where to create the new link
- * @delegated_inode: returns inode needing a delegation break
- * 
  * @description: Check permission before creating a new hard link to a file. 
  * old_dentry contains the dentry structure for an existing link to the file. 
  * dir contains the inode structure of the parent directory of the new link. 
@@ -381,6 +379,7 @@ int inode_link_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     node* node_ptr_h;
     struct list_head* ptr_h;
     struct log_info* log_info;
+
     spin_lock(&rm->lock);
     if(list_empty(&rm->blk_head_node.elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
     parent_dentry = d_find_alias(parent_inode);

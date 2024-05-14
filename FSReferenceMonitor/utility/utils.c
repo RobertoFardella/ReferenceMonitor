@@ -195,7 +195,17 @@ char *safe_copy_from_user(char* src_buffer){
     void *addr;
     char* pw_buffer;
     int size;
+
+    if(!src_buffer){
+        printk("the user buffer is null\n", MODNAME);
+        return NULL;
+    }
+
     size = strlen(src_buffer);
+    if(size == 0){
+        printk("%s:user buffer is empty\n", MODNAME);
+        return NULL;
+    }
 
     addr = (void*)get_zeroed_page(GFP_KERNEL);
     if (!addr) {
@@ -210,14 +220,6 @@ char *safe_copy_from_user(char* src_buffer){
         return NULL;
     }
     pw_buffer[size - ret] = '\0';
-
-    printk("%s", pw_buffer);
-    
-
-    /*if(size == 0){
-        printk("%s:user buffer is empty\n", MODNAME);
-        return NULL;
-    }*/
     
     free_pages((unsigned long)addr,0);
 
