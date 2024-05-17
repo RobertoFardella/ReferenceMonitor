@@ -1,4 +1,5 @@
-```
+# Kernel Level Reference Monitor for File Protection 
+
 ## Linux Kernel Module (LKM) Specification
 
 This specification is related to a Linux Kernel Module (LKM) implementing a reference monitor for file protection. The reference monitor can be in one of the following four states:
@@ -28,4 +29,86 @@ In addition to the above specifics, the project should also include the realizat
 - a cryptographic hash of the program file content
 
 The computation of the cryptographic hash and the writing of the above tuple should be carried in deferred work.
-```
+
+### Installation
+1. Clone the repo
+   ```sh
+   git clone https://github.com/Zudel/ReferenceMonitor.git
+   ```
+2.  Build and install the module through the main Makefile contained in `ReferenceMonitor` directory passing the password as a parameter, with the following command:
+   ```sh
+   make PW=<password>
+   ```
+
+### USAGE
+The following commands are available to manage the reference monitor:
+
+* Switch the state of the reference monitor
+ ```sh
+  make switch_state
+  ```
+  
+  * add a path to the blacklist
+ ```sh
+  make add_path_blacklist path=<path>
+  ```
+
+* Remove a path from the blacklist
+```sh
+  make rm_path_blacklist path=<path>
+  ```
+
+* Print all paths of the blacklist
+```sh
+  make print_blacklist
+  ```
+
+* Write a text string to a file where text and path is passed by parameters
+```sh
+  make write_test path=<path> text=<text>
+  ```
+
+* Create a directory with pathname passed by parameter
+```sh
+  make mkdir_test path=<pathname>
+  ```
+
+* Create device node or (special) file
+```sh
+  make mknod_test 
+  ```
+
+* Setting file attributes 
+```sh
+  make setattr_test path=<path>
+  ```
+
+* Rename a file or directory. 
+```sh 
+  make rename_test old_path=<old_path> new_path=<new_path>
+  ```
+
+* Create symlink
+```sh
+  make symblink_test path=<pathname> sym_path=<sym path>
+  ```
+
+* remove a hard link to a file
+```sh
+  make unlink_test path=<path>
+  ```
+
+* Create hard link to a file
+```sh
+  make link_test path=<path> hl_path=<hard link path> 
+  ```
+
+*  Create a regular file
+```sh
+  make create_test path=<path>
+  ```
+
+
+
+
+

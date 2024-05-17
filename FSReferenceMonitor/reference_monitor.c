@@ -130,9 +130,9 @@ asmlinkage int sys_switch_state(enum state, char* pw){
 /*sys_manage_link: */
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-__SYSCALL_DEFINEx(2,_manage_link, char*, buffer_path, int, op){
+__SYSCALL_DEFINEx(3,_manage_link, char*, buffer_path, char*, pw, int, op){
 #else
-asmlinkage int sys_manage_link(char* buffer_path,int op){
+asmlinkage int sys_manage_link(char* buffer_path,char* pw, int op){
 #endif
     int ret;
     const struct cred *cred = current_cred();
@@ -142,7 +142,9 @@ asmlinkage int sys_manage_link(char* buffer_path,int op){
     struct list_head *ptr;
     struct path struct_path;
     struct list_head * new_node_lh;
+    unsigned char* hash_digest;
     char* pathname;
+    char* pw_buffer;
     
     if (!uid_eq(cred->euid, GLOBAL_ROOT_UID)){ 
         printk("%s: Only EUID 0 (root) can perform the insert/delete path activity\n", MODNAME);
@@ -154,7 +156,25 @@ asmlinkage int sys_manage_link(char* buffer_path,int op){
         return -EINVAL;    
     }
 
-    if(op == 2) goto print;
+    if(op == 2) goto print; //we skip the passage of parameters from user space to kernel space
+
+    pw_buffer = safe_copy_from_user(pw);
+    if(!pw_buffer){
+        printk("%s: error in safe_copy_from_user\n", MODNAME);
+        return -ENOMEM;
+    }
+
+    hash_digest = password_hash(pw_buffer);
+    if(!hash_digest){
+        printk("%s: computation passwprd hash failed\n", MODNAME);
+        return -ENOMEM;
+    }
+    kfree(pw_buffer); 
+
+    if( strcmp(rm->pw_hash, hash_digest) != 0 ){   
+        printk("%s: mismatching of the password\n", MODNAME);
+        return -EINVAL; 
+        }
 
     pathname = safe_copy_from_user(buffer_path);
     if(!pathname){
@@ -171,7 +191,7 @@ asmlinkage int sys_manage_link(char* buffer_path,int op){
 print:
     spin_lock(&rm->lock);
 
-    if(op == 0){ //add path
+    if(op == 0){ //adding path
             
             new_node_lh = kmalloc(sizeof(struct list_head), GFP_KERNEL);
             if (new_node_lh == NULL) {
@@ -191,7 +211,7 @@ print:
             inode =  struct_path.dentry->d_inode; //retrieve inode from kern_path
             
             /*check if inode is already present*/
-            if(list_empty(&rm->blk_head_node.elem)) goto ok; //if balcklist is empty, no check 
+            if(list_empty(&rm->blk_head_node.elem)) goto ok; //if balcklist is empty, no check if a path is already present
             
             node *node_ptr_aux;
             list_for_each(ptr, &rm->blk_head_node.elem) {
@@ -210,10 +230,10 @@ ok:
             node_ptr->inode_blk = inode;
             node_ptr->dentry_blk = struct_path.dentry;
             kfree(pathname);
-            list_add_tail(new_node_lh, &rm->blk_head_node.elem);  // Adding the new node to the list (list_head)
+            list_add_tail(new_node_lh, &rm->blk_head_node.elem);  // Adding the new node to the blacklist
             spin_unlock(&rm->lock);
     }
-    else if(op == 1){ //remove path
+    else if(op == 1){ //removing path
         if(list_empty(&rm->blk_head_node.elem)){
             kfree(pathname);
             spin_unlock(&rm->lock);
@@ -236,6 +256,7 @@ ok:
         return -EINVAL;
     }
     else{ //list path , the first parameter pathname of the syscall sys_manage_link, can be NULL
+          ////if the value of op is 2, print the paths of the blacklist (they need to be seen via dmesg)
         if(list_empty(&rm->blk_head_node.elem)){
             spin_unlock(&rm->lock);
             printk("%s: the blacklist is empty\n", MODNAME);
@@ -397,7 +418,6 @@ int inode_link_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
 leave:
     spin_unlock(&rm->lock);
     return 1;
-
 }
 /*int security_inode_unlink(struct inode *dir, struct dentry *dentry) 
  * called in vfs_unlink - unlink a filesystem object
@@ -705,9 +725,9 @@ void deferred_logger_handler(struct work_struct* data){
     pkd_w->log_info.file_content_hash = file_content_fingerprint(pkd_w->log_info.pathname); //dovrei usar eun hash non crittografico
     if(!(pkd_w->log_info.file_content_hash)){
         printk("%s: hash not computed\n", MODNAME);
-        return ;
+        return;
     }
-    sprintf(line, "pathname: %s, pathname hashed: %s, tgid: %d, tid: %d, effective uid: %d, real uid: %d\n", pkd_w->log_info.pathname,pkd_w->log_info.file_content_hash,pkd_w->log_info.tgid, pkd_w->log_info.tid, pkd_w->log_info.effect_uid, pkd_w->log_info.real_uid);
+    sprintf(line, "pathname: %s, file content hash: %s, tgid: %d, tid: %d, effective uid: %d, real uid: %d\n", pkd_w->log_info.pathname,pkd_w->log_info.file_content_hash,pkd_w->log_info.tgid, pkd_w->log_info.tid, pkd_w->log_info.effect_uid, pkd_w->log_info.real_uid);
  
     ret = kernel_write(rm->log_file, line, strlen(line), &rm->log_file->f_pos);
     if(IS_ERR(ret != strlen(line))){
@@ -745,7 +765,7 @@ int init_module(void) {
     
     kfree(digest_crypto_hash);
     
-    rm->state = REC_ON;// init state of reference monitor
+    rm->state = OFF;// init state of reference monitor
     
     INIT_LIST_HEAD(&rm->blk_head_node.elem); 
     

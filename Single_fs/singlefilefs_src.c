@@ -12,26 +12,6 @@
 #include "singlefilefs.h"
 
 
-/*
-Questi comandi sono parte di un processo per creare un filesystem utilizzando un'immagine di un file e montarlo nel sistema. 
-Ecco cosa fanno:
-
-1. **create-fs:**
-   - `dd bs=4096 count=100 if=/dev/zero of=image`: Questo comando crea un file chiamato "image" con 
-   dimensioni di 4096 byte * 100 = 400 KB. Il contenuto del file è composto da zeri, poiché viene copiato 
-   dal dispositivo `/dev/zero`.
-   - `./singlefilemakefs image`: Questo comando utilizza il programma `singlefilemakefs` (presumibilmente 
-   un programma personalizzato per creare un filesystem su un singolo file) per formattare 
-   l'immagine appena creata come un filesystem.
-   - `mkdir mount`: Questo comando crea una directory chiamata "mount" nel percorso corrente.
-
-2. **mount-fs:**
-   - `sudo mount -o loop -t singlefilefs image ./mount/`: Questo comando monta l'immagine 
-   del filesystem creato precedentemente (immagine "image") nella directory appena creata "mount". 
-   L'opzione `-o loop` consente di montare un file come dispositivo loop. L'opzione `-t singlefilefs` specifica il
-    tipo di filesystem da montare (presumibilmente "singlefilefs" è un tipo di filesystem personalizzato).*/
-
-
 static struct super_operations singlefilefs_super_ops = {
 };
 
@@ -151,9 +131,7 @@ static int singlefilefs_init(void) {
 static void singlefilefs_exit(void) {
 
     int ret;
-    
-    //filp_close(destFile, NULL); qui chiudo il file unico
-    
+        
     //unregister filesystem
     ret = unregister_filesystem(&onefilefs_type);
 

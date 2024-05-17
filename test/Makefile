@@ -1,11 +1,4 @@
 ## Makefile for testing the file system - is called from the root Makefile
-all:
-	gcc test/write_test.c -o ./test/write_test
-	#gcc test/rename_test.c -o ./test/rename_test
-	#gcc test/setattr_test.c -o ./test/setattr_test
-	#gcc test/mknod_test.c -o ./test/mknod_test
-	#gcc test/mkdir_test.c -o ./test/mkdir_test
-	sudo ./test/write_test "/home/zudelino/Musica/a.txt" "Hello World" 
 
 switch_state:
 	gcc test/switch_state.c -o ./test/switch_state
@@ -17,11 +10,10 @@ init_blacklist:
 
 add_path_blacklist:
 	gcc test/add_path_blacklist.c -o ./test/add_path_blacklist
-	sudo ./test/add_path_blacklist "/home/zudelino/Musica/a.txt"
-
+	sudo ./test/add_path_blacklist $$path
 rm_path_blacklist:
 	gcc test/rm_path_blacklist.c -o ./test/rm_path_blacklist
-	sudo ./test/rm_path_blacklist "/home/zudelino/Musica/a.txt"
+	sudo ./test/rm_path_blacklist $$path
 
 print_blacklist:
 	gcc test/print_blacklist.c -o ./test/print_blacklist
@@ -29,41 +21,58 @@ print_blacklist:
 
 write_test:
 	gcc test/write_test.c -o ./test/write_test
-	sudo ./test/write_test /home/zudelino/Musica/a.txt Hello_World
+	sudo ./test/write_test $$path $$text
 
 mkdir_test:
 	gcc test/mkdir_test.c -o ./test/mkdir_test
-	sudo ./test/mkdir_test /home/zudelino/Musica/asas/dir
+	sudo ./test/mkdir_test $$path
 
 mknod_test:
 	gcc test/mknod_test.c -o ./test/mknod_test
-	sudo ./test/mknod_test /home/zudelino/Musica/asas ##########################################################
+	sudo ./test/mknod_test $$path
 
 setattr_test:
 	gcc test/setattr_test.c -o ./test/setattr_test
-	sudo ./test/setattr_test /home/zudelino/Musica/asas 
+	sudo ./test/setattr_test $$path
 
 rename_test:
 	gcc test/rename_test.c -o ./test/rename_test
-	sudo ./test/rename_test /home/zudelino/Musica/asas /home/zudelino/Musica/asas2
+	sudo ./test/rename_test $$old_path $$new_path
 
 rmdir_test:
 	gcc test/rmdir_test.c -o ./test/rmdir_test
-	sudo ./test/rmdir_test /home/zudelino/Musica/asas
+	sudo ./test/rmdir_test $$path
 
 symblink_test:
 	gcc test/symlink_test.c -o ./test/symlink_test
-	sudo ./test/symlink_test /home/zudelino/Musica/a.txt /home/zudelino/Musica/asas/b.txt
+	sudo ./test/symlink_test $$path $$sym_path
 
 unlink_test:
 	gcc test/unlink_test.c -o ./test/unlink_test
-	sudo ./test/unlink_test /home/zudelino/Musica/a.txt
+	sudo ./test/unlink_test $$path
 
 link_test:
 	gcc test/link_test.c -o ./test/link_test
-	sudo ./test/link_test /home/zudelino/Musica/asas /home/zudelino/Musica/asas2
+	sudo ./test/link_test $$path $$hl_path
 
 create_test:
 	gcc test/create_test.c -o ./test/create_test
-	sudo ./test/create_test /home/zudelino/Musica/asas/ciaone.txt
+	sudo ./test/create_test $$path
+
+clean:
+	rm -f ./test/write_test
+	rm -f ./test/switch_state
+	rm -f ./test/init_blacklist
+	rm -f ./test/add_path_blacklist
+	rm -f ./test/rm_path_blacklist
+	rm -f ./test/print_blacklist
+	rm -f ./test/mkdir_test
+	rm -f ./test/mknod_test
+	rm -f ./test/setattr_test
+	rm -f ./test/rename_test
+	rm -f ./test/rmdir_test
+	rm -f ./test/symlink_test
+	rm -f ./test/unlink_test
+	rm -f ./test/link_test
+	rm -f ./test/create_test
 

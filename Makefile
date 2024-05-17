@@ -13,6 +13,8 @@ clean:
 	make -f FSReferenceMonitor/Makefile remote-clean
 	make -f Linux-sys_call_table-discoverer/Makefile remote-clean
 	make -f Single_fs/Makefile remote-clean
+	make -f test/Makefile clean
+	
 insmod:
 	make -f Single_fs/Makefile remote-insmod
 	sudo make -f Linux-sys_call_table-discoverer/Makefile remote-insmod
@@ -25,9 +27,6 @@ rmmod:
 	
 #command to run the test cases
 
-all_testing:
-	sudo make -f test/Makefile all
-
 init_blacklist: 
 	sudo make -f test/Makefile init_blacklist
 	
@@ -35,39 +34,45 @@ switch_state:
 	sudo make -f test/Makefile switch_state
 
 add_path_blacklist:
-	sudo make -f test/Makefile add_path_blacklist
+	sudo make -e path=$(path) -f test/Makefile add_path_blacklist
 
 rm_path_blacklist:	
-	sudo make -f test/Makefile rm_path_blacklist
+	sudo make  -e path=$(path) -f test/Makefile rm_path_blacklist
 
 print_blacklist:
 	sudo make -f test/Makefile print_blacklist
 
 write_test:
-	sudo make -f test/Makefile write_test
+	make -e path=$(path) text=$(text) -f test/Makefile write_test
 
 mkdir_test:
-	sudo make -f test/Makefile mkdir_test
+	make -e path=$(path) -f test/Makefile mkdir_test
 
 rmdir_test:
-	sudo make -f test/Makefile rmdir_test
+	make -e path=$(path) -f test/Makefile rmdir_test
 
 mknod_test:
-	sudo make -f test/Makefile mknod_test
+	make -e path=$(path) -f test/Makefile mknod_test
 
 setattr_test:
-	sudo make -f test/Makefile setattr_test
+	make -e path=$(path) -f test/Makefile setattr_test
 
 rename_test:
-	sudo make -f test/Makefile rename_test
+	make -e old_path=$(old_path) new_path=$(new_path) -f test/Makefile rename_test
 
 symblink_test:
-	sudo make -f test/Makefile symblink_test
+	make -e path=$(path) sym_path=$(sym_path) -f test/Makefile symblink_test
 
 unlink_test:
-	sudo make -f test/Makefile unlink_test
+	make -e path=$(path) -f test/Makefile unlink_test
 
-#command to setup the filesystem
+link_test:
+	make -e path=$(path) hl_path=$(hl_path) -f test/Makefile link_test
+
+create_test:
+	make -e path=$(path) -f test/Makefile create_test
+
+# filesystem commands
 
 filesystem-setup:
 	make -f Single_fs/Makefile ex-create-fs

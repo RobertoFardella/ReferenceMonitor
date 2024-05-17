@@ -28,7 +28,7 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     loff_t offset;
     int block_to_read;//index of the block to be read from device
 
-    printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld) \n",MODNAME, len, *off, file_size);
+    //printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld) \n",MODNAME, len, *off, file_size);
 
      mutex_lock(&offset_mutex);
     //check that *off is within boundaries
@@ -48,7 +48,7 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     //compute the actual index of the the block to be read from device
     block_to_read = *off / DEFAULT_BLOCK_SIZE + 2; //the value 2 accounts for superblock and file-inode on device
     
-    printk("%s: read operation must access block %d of the device",MODNAME, block_to_read);
+    //printk("%s: read operation must access block %d of the device",MODNAME, block_to_read);
 
     bh = (struct buffer_head *)sb_bread(filp->f_path.dentry->d_inode->i_sb, block_to_read);
     if(!bh){
@@ -131,7 +131,7 @@ iter:
 
 ssize_t onefilefs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *off){
     printk("write op invocated\n");
-    return 1;
+    return 0;
 }
 
 struct dentry *onefilefs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags) {
