@@ -8,9 +8,9 @@ enum rm_state displayMenuAndGetChoice() {
     printf("3. REC-ON\n");
     printf("4. REC-OFF\n");
 
-    char choice[8];
+    char *choice;
     scanf("%s", choice);
-  
+    
     if (strcmp(choice, "ON") == 0) {
         printf("Stato selezionato: ON\n");
         return ON;
@@ -35,7 +35,6 @@ int main(int argc, char** argv){
 	size_t size_pw ;
 	enum rm_state state;
 
-
 init:
     state = displayMenuAndGetChoice();
     if(state == -1){ 
@@ -46,7 +45,6 @@ init:
         scanf("%s", pw);
         // Rimuovi il newline dalla fine della stringa
         pw[strcspn(pw, "\n")] = '\0';
-        size_pw = strlen(pw);
         ret = syscall(syscall_index[0], state, pw);
         free(pw);
         if(ret == -1){
