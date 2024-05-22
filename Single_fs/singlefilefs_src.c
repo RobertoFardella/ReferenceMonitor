@@ -53,11 +53,13 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
         return -ENOMEM;
     }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0)
-inode_init_owner(sb->s_user_ns, root_inode, NULL, S_IFDIR);//set the root user as owner of the FS root
-#else
-inode_init_owner(root_inode, NULL, S_IFDIR);//set the root user as owner of the FS root
-#endif
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,12,0)
+        inode_init_owner(root_inode, NULL, S_IFREG );
+    #elif LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)
+        inode_init_owner(&init_user_ns,root_inode, NULL, S_IFREG);
+    #elif LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)
+        inode_init_owner(&nop_mnt_idmap,root_inode, NULL, S_IFREG );
+    #endif
 
     
     root_inode->i_sb = sb;

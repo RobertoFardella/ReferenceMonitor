@@ -3,7 +3,7 @@
 #include <crypto/hash.h>
 #include "./../referenceMonitor.h"
 
-int calculate_crypto_hash(const char *content, unsigned char* hash) 
+int calculate_crypto_hash(const char *content, int size_content, unsigned char* hash) 
 {
     struct crypto_shash *tfm;
     struct shash_desc *desc;
@@ -15,16 +15,21 @@ int calculate_crypto_hash(const char *content, unsigned char* hash)
     if (IS_ERR(tfm))
         return PTR_ERR(tfm);
 
-    desc = kmalloc(sizeof(desc), GFP_KERNEL);
+    desc  = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(tfm), GFP_KERNEL);
     if (!desc) {
         crypto_free_shash(tfm);
         return -ENOMEM;
     }
     desc->tfm = tfm;
-    ret = crypto_shash_digest(desc, content, strlen(content), hash);//return 0 if the message digest creation was successful; < 0 if an error occurred
-    
-    kfree(desc);
-    crypto_free_shash(tfm);
+    ret = crypto_shash_digest(desc, content, size_content, hash);//return 0 if the message digest creation was successful; < 0 if an error occurred
+    if(ret < 0){
+        printk("%s: digest computation failed\n",MODNAME);
+        return -EFAULT;
+    }
+    if(desc)
+        kfree(desc);
+    if(tfm)
+        crypto_free_shash(tfm);
 
     return ret;
 }
@@ -116,7 +121,7 @@ struct inode *get_parent_inode(struct inode *file_inode) {
     return parent_inode;
 }
 
-char* password_hash(char* pw){
+char* password_hash(char* pw, int size){
     unsigned char *pw_digest = kmalloc(sizeof(SHA256_DIGEST_SIZE * 2 + 1), GFP_KERNEL); 
     char buffer[SHA256_DIGEST_SIZE * 2 + 1];
     int ret,i, offset = 0;
@@ -124,7 +129,7 @@ char* password_hash(char* pw){
     printk("pw inserita dall'utente: %s", pw);
     //encryption password phase
 
-    ret = calculate_crypto_hash(pw, pw_digest);
+    ret = calculate_crypto_hash(pw,size, pw_digest);
 
     if(ret < 0){
         printk("%s: crypto digest not computed\n", MODNAME);
@@ -190,19 +195,17 @@ char *get_path_from_dentry(struct dentry *dentry) {
 
 
 
-char *safe_copy_from_user(char* src_buffer){
+char *safe_copy_from_user(char* src_buffer, int len){
     int ret;
     void *addr;
     char* pw_buffer;
-    int size;
 
     if(!src_buffer){
         printk("the user buffer is null\n", MODNAME);
         return NULL;
     }
 
-    size = strlen(src_buffer);
-    if(size == 0){
+    if(len == 0){
         printk("%s:user buffer is empty\n", MODNAME);
         return NULL;
     }
@@ -213,13 +216,13 @@ char *safe_copy_from_user(char* src_buffer){
         return NULL;
     }
 
-    ret = copy_from_user((char*)addr, src_buffer,size);
-    pw_buffer = kstrndup((char*)addr, size - ret, GFP_KERNEL);
+    ret = copy_from_user((char*)addr, src_buffer,len);
+    pw_buffer = kstrndup((char*)addr, len - ret, GFP_KERNEL);
     if(!pw_buffer) {
         printk("%s: kernel memory allocation failed\n", MODNAME);
         return NULL;
     }
-    pw_buffer[size - ret] = '\0';
+    pw_buffer[len - ret] = '\0';
     
     free_pages((unsigned long)addr,0);
 

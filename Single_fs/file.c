@@ -22,8 +22,7 @@ static DEFINE_MUTEX(offset_mutex); //*off can be changed concurrently
 ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t * off) {
 
     struct buffer_head *bh = NULL;
-    struct inode * the_inode = filp->f_inode; 
-    uint64_t file_size = the_inode->i_size;
+    uint64_t file_size;
     int ret;
     loff_t offset;
     int block_to_read;//index of the block to be read from device
@@ -31,6 +30,12 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     //printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld) \n",MODNAME, len, *off, file_size);
 
      mutex_lock(&offset_mutex);
+     if(IS_ERR(filp)){
+        printk("%s: file is null\n",MOD_NAME);
+        return len;
+     }
+     file_size = filp->f_inode->i_size;
+     
     //check that *off is within boundaries
     if (*off >= file_size){
         mutex_unlock(&offset_mutex);
@@ -58,25 +63,32 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     ret = copy_to_user(buf,bh->b_data + offset, len);  
                                                        
     *off += (len - ret); //incremento di quanti byte effettivamente ho scritto sul file
-    mutex_unlock(&offset_mutex);
     brelse(bh);
+    mutex_unlock(&offset_mutex);
     return len - ret;
 
 }
 
 ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
-  	struct file *file = iocb->ki_filp;
-	struct inode *filp_inode = file->f_inode;
+  	struct file *file;
+	struct inode *filp_inode;
 	loff_t blk_offset, size_file;
     int blk_to_write;
     struct block_device *bdev; 
     struct buffer_head *bh;
 	ssize_t ret;
-    int payload_size = from->count; //lunghezza del buffer da scrivere
+    int payload_size; //lunghezza del buffer da scrivere
     char* buffer_data;
 
-
     mutex_lock(&offset_mutex);
+    file = iocb->ki_filp;
+    payload_size = from->count;
+    if(IS_ERR(file)){
+        printk("%s: file is null\n",MOD_NAME);
+        return payload_size;
+     }
+    
+    filp_inode = file->f_inode;
     buffer_data = kmalloc(payload_size, GFP_KERNEL);
     if(!buffer_data) return -ENOMEM;
 
@@ -88,21 +100,32 @@ iter:
     
     bh = (struct buffer_head *)sb_bread(file->f_path.dentry->d_inode->i_sb, blk_to_write);
     if(!bh){
+        kfree(buffer_data);
+        mutex_unlock(&offset_mutex);
 	    return -EIO;
     }
 
     bdev = bh->b_bdev;  /* device where block resides */
 
-    if (bdev->bd_read_only)
-		return -EPERM;
+    if (bdev->bd_read_only){
+		kfree(buffer_data);
+        mutex_unlock(&offset_mutex);
+        return -EPERM;
 
-	if (!iov_iter_count(from)) //Check if there is data to write
-		return 0;
+    }
+
+	if (!iov_iter_count(from)){ //Check if there is data to write
+		kfree(buffer_data);
+        mutex_unlock(&offset_mutex);
+        return 0;
+    }
 
     ret = copy_from_iter((void*)buffer_data, (size_t) payload_size, from);
     if(ret != payload_size) {
+        kfree(buffer_data);
+        mutex_unlock(&offset_mutex);
         printk("%s: all bytes are not copied", MOD_NAME);
-        return -2;
+        return -ENOMEM;
     }
 
      //append operation
@@ -112,7 +135,7 @@ iter:
         blk_to_write++; //advance block of device
         i_size_write(filp_inode, size_file + DEFAULT_BLOCK_SIZE - blk_offset);
         payload_size -=  DEFAULT_BLOCK_SIZE - blk_offset;
-         mark_buffer_dirty(bh);
+        mark_buffer_dirty(bh);
         goto iter;
         
     }
@@ -154,14 +177,14 @@ struct dentry *onefilefs_lookup(struct inode *parent_inode, struct dentry *child
         if(!(the_inode->i_state & I_NEW)){
             return child_dentry;
         }
-
-
         //this work is done if the inode was not already cached
-        #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0)
-        inode_init_owner(sb->s_user_ns, the_inode, NULL, S_IFREG);//set the root user as owner of the FS root
-        #else
-        inode_init_owner(the_inode, NULL, S_IFREG );
-        #endif
+    #if LINUX_VERSION_CODE <= KERNEL_VERSION(5,12,0)
+        inode_init_owner(the_inode, NULL, S_IFREG);
+    #elif LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)
+        inode_init_owner(&init_user_ns,the_inode, NULL, S_IFREG);
+    #elif LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)
+        inode_init_owner(&nop_mnt_idmap,the_inode, NULL, S_IFREG);
+    #endif
         
         the_inode->i_mode = S_IFREG | S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP | S_IXUSR | S_IXGRP | S_IXOTH;
         the_inode->i_fop = &onefilefs_file_operations;

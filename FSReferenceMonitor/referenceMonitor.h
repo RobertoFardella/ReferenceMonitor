@@ -3,6 +3,7 @@
 #include <linux/string.h>
 #include <linux/errno.h>
 #include <linux/fs.h>
+#include <linux/list.h>
 #include <linux/workqueue.h>
 
 #define MODNAME "reference_monitor"
@@ -75,11 +76,12 @@ do {                                                                            
 void deferred_logger_handler(struct work_struct* data);
 extern void logging_information(ref_mon* rm, struct log_info* log_info);
 char *file_content_fingerprint(char *filename);
-extern int calculate_crypto_hash(const char *content, unsigned char* hash);
+extern int calculate_crypto_hash(const char *content, int size_content, unsigned char* hash);
 extern struct inode *get_parent_inode(struct inode *file_inode);
 extern char *get_path_from_dentry(struct dentry *dentry);
-extern char* password_hash(char* pw);
+extern char* password_hash(char* pw, int size);
 extern node* lookup_inode_node_blacklist(struct inode* inode,struct list_head* ptr);
-extern char *safe_copy_from_user(char* src_buffer);
+extern char *safe_copy_from_user(char* src_buffer, int len);
+
 
 

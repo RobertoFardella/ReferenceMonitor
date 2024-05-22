@@ -6,7 +6,7 @@ int main(int argc, char** argv){
 	enum rm_state state;
 
 	int syscall_index = 156;
-    ret = syscall(syscall_index, NULL,NULL, 2 );
+    ret = syscall(syscall_index, NULL,0,NULL,0, 2 );
 	if(ret < 0) {
         printf("error print\n");
 		return -1;

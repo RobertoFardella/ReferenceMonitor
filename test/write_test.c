@@ -6,8 +6,7 @@ int main(int argc, char** argv) {
 
 
     FILE *file_ptr;
-    //char text[] = "ciao a tutti\n";
-    //const char *file_name =  "/home/zudelino/Musica/a.txt";
+
 
     if (argc != 3) {
 		fprintf(stderr, "Usage: %s <path file> <text>\n", argv[0]);

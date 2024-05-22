@@ -15,7 +15,7 @@ int main(int argc, char** argv){
 	scanf("%s", pw);
 	// Rimuovi il newline dalla fine della stringa
 	pw[strcspn(pw, "\n")] = '\0';
-    ret = syscall(syscall_index, argv[1], pw, 0 );
+    ret = syscall(syscall_index, argv[1],strlen(argv[1]), pw,strlen(pw), 0 );
     if(ret < 0){
         printf("error in adding path\n");
         return -1;

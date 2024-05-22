@@ -77,6 +77,7 @@ int main(int argc, char *argv[])
 
 	if (ret != nbytes) {
 		printf("The padding bytes are not written properly. Retry your mkfs\n");
+		free(block_padding);
 		close(fd);
 		return -1;
 	}

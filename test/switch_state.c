@@ -30,9 +30,9 @@ enum rm_state displayMenuAndGetChoice() {
 }
 int main(int argc, char** argv){     
 	int ret ;
-	char *pw = malloc(sizeof(char)*64);
+	char *pw= malloc(sizeof(char)*256);
 	int syscall_index[5] = {134,156};
-	size_t size_pw ;
+	int size_pw ;
 	enum rm_state state;
 
 init:
@@ -43,9 +43,12 @@ init:
     }  
         printf("enter a password:");
         scanf("%s", pw);
+
+        //fprintf(pw, "ciao");
         // Rimuovi il newline dalla fine della stringa
         pw[strcspn(pw, "\n")] = '\0';
-        ret = syscall(syscall_index[0], state, pw);
+        size_pw= strlen(pw);
+        ret = syscall(syscall_index[0], state, pw,size_pw);
         free(pw);
         if(ret == -1){
             perror("\nErrore nella syscall_switch_state");
