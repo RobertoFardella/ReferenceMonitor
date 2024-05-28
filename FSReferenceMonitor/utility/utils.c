@@ -15,7 +15,7 @@ int calculate_crypto_hash(const char *content, int size_content, unsigned char* 
     if (IS_ERR(tfm))
         return PTR_ERR(tfm);
 
-    desc  = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(tfm), GFP_KERNEL);
+    desc  = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(tfm), GFP_ATOMIC);
     if (!desc) {
         crypto_free_shash(tfm);
         return -ENOMEM;
@@ -57,7 +57,7 @@ char *file_content_fingerprint(char *pathname) {
         }
 
         /* hash descriptor allocation */
-        desc = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(hash_tfm), GFP_KERNEL);
+        desc = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(hash_tfm), GFP_ATOMIC);
         if (!desc) {
                 printk("Failed to allocate hash descriptor\n");
                 goto out;
@@ -65,7 +65,7 @@ char *file_content_fingerprint(char *pathname) {
         desc->tfm = hash_tfm;
 
         /* digest allocation */
-        digest = kmalloc(32, GFP_KERNEL);
+        digest = kmalloc(32, GFP_ATOMIC);
         if (!digest) {
                 printk("Failed to allocate hash buffer\n");
                 goto out;
@@ -83,7 +83,7 @@ char *file_content_fingerprint(char *pathname) {
         crypto_shash_final(desc, digest);
 
         /* result allocation */
-        result = kmalloc(2 * 32 + 1, GFP_KERNEL);
+        result = kmalloc(2 * 32 + 1, GFP_ATOMIC);
         if (!result) {
                 printk("Failed to allocate memory for result\n");
                 goto out;
@@ -120,20 +120,24 @@ struct inode *get_parent_inode(struct inode *file_inode) {
     }
     return parent_inode;
 }
+/*any time that password_hash is invoked, is needed esplicity deallocate the return pointer allocated*/
 
 char* password_hash(char* pw, int size){
-    unsigned char *pw_digest = kmalloc(sizeof(SHA256_DIGEST_SIZE * 2 + 1), GFP_KERNEL); 
+    unsigned char pw_digest[SHA256_DIGEST_SIZE * 2 + 1]; 
     char buffer[SHA256_DIGEST_SIZE * 2 + 1];
+    char* result;
     int ret,i, offset = 0;
-    
-    printk("pw inserita dall'utente: %s", pw);
+
+    if(!pw){
+        printk("%s: crypto digest not computed\n", MODNAME);
+        return NULL;
+    }
     //encryption password phase
 
     ret = calculate_crypto_hash(pw,size, pw_digest);
 
     if(ret < 0){
         printk("%s: crypto digest not computed\n", MODNAME);
-        kfree(pw_digest);
         return NULL;
     }
 
@@ -141,10 +145,12 @@ char* password_hash(char* pw, int size){
         offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%02x", pw_digest[i]); 
     }
 
-    buffer[offset] = '\0'; 
-    
-    kfree(pw_digest);
-    return kstrdup(buffer, GFP_KERNEL);
+    result = kstrdup(buffer ,GFP_KERNEL);
+    if(!result){
+        printk("%s:password hashing failed\n", MODNAME);
+        return NULL;
+    }
+    return result;
 }
 
 node* lookup_inode_node_blacklist(struct inode* inode, struct list_head* head){
@@ -160,25 +166,28 @@ node* lookup_inode_node_blacklist(struct inode* inode, struct list_head* head){
 }
 
 void logging_information(ref_mon* rm, struct log_info* log_info){
-    static packed_work pkd_work;
+    packed_work * pkd_work;
+    pkd_work = kmalloc(sizeof(pkd_work),GFP_ATOMIC);
     const struct cred *cred;
     cred = current_cred();
 
-    pkd_work.log_info.real_uid = cred->uid;
-    pkd_work.log_info.effect_uid = cred->euid;
-    pkd_work.log_info.tid = current->pid;
-    pkd_work.log_info.tgid = current->tgid;
-    pkd_work.log_info.pathname =log_info->pathname;
-    
-    INIT_WORK(&pkd_work.work, deferred_logger_handler);
-    queue_work(rm->queue_work, &pkd_work.work);
+    if(!pkd_work) {
+        printk("W\n");
+        return;}
+    pkd_work->log_info.real_uid = cred->uid;
+    pkd_work->log_info.effect_uid = cred->euid;
+    pkd_work->log_info.tid = current->pid;
+    pkd_work->log_info.tgid = current->tgid;
+    pkd_work->log_info.pathname =log_info->pathname;
+    INIT_WORK(&pkd_work->work, deferred_logger_handler);
+    queue_work(rm->queue_work, &pkd_work->work);
     return;
 }
 
 char *get_path_from_dentry(struct dentry *dentry) {
 
 	char *buffer, *full_path;
-        buffer = (char *)__get_free_page(GFP_KERNEL);
+        buffer = (char *)__get_free_page(GFP_ATOMIC);
         if (!buffer)
                 return NULL;
 
@@ -188,43 +197,38 @@ char *get_path_from_dentry(struct dentry *dentry) {
                 free_page((unsigned long)buffer);
                 return NULL;
         } 
-
+        
         free_page((unsigned long)buffer);
         return full_path;
 }
 
-
+/*any time that safe_copy_from_user is invoked, is needed esplicity deallocate the return pointer allocated*/
 
 char *safe_copy_from_user(char* src_buffer, int len){
-    int ret;
-    void *addr;
+    unsigned long ret;
+    char *addr;
     char* pw_buffer;
 
     if(!src_buffer){
-        printk("the user buffer is null\n", MODNAME);
+        printk("%s: the user buffer is null\n", MODNAME);
         return NULL;
     }
+   
+    addr = (char *)__get_free_page(GFP_KERNEL);
+        if (!addr){
+            printk("%s: kernel page memory allocation failed\n", MODNAME);
+            return NULL;
+        }
 
-    if(len == 0){
-        printk("%s:user buffer is empty\n", MODNAME);
-        return NULL;
-    }
+    ret = copy_from_user(addr, src_buffer,len);
 
-    addr = (void*)get_zeroed_page(GFP_KERNEL);
-    if (!addr) {
-        printk("%s: kernel page allocation failed\n", MODNAME);
-        return NULL;
-    }
-
-    ret = copy_from_user((char*)addr, src_buffer,len);
-    pw_buffer = kstrndup((char*)addr, len - ret, GFP_KERNEL);
+    pw_buffer = kstrndup(addr, len - ret , GFP_KERNEL);
     if(!pw_buffer) {
+        free_page((unsigned long)addr);
         printk("%s: kernel memory allocation failed\n", MODNAME);
         return NULL;
-    }
-    pw_buffer[len - ret] = '\0';
-    
-    free_pages((unsigned long)addr,0);
+    }   
+    free_page((unsigned long)addr);
 
     return pw_buffer;
 }

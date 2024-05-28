@@ -3,8 +3,9 @@
 
 int main(int argc, char** argv){
 	int ret ;
-	char* pw= malloc(sizeof(char)*64);
-	enum rm_state state;
+	char pw[256];
+	int pw_size;
+	int path_len;
 
 	int syscall_index = 156;
     if (argc != 2) {
@@ -14,8 +15,10 @@ int main(int argc, char** argv){
 	printf("enter a password:");
 	scanf("%s", pw);
 	// Rimuovi il newline dalla fine della stringa
-	pw[strcspn(pw, "\n")] = '\0';
-    ret = syscall(syscall_index, argv[1],strlen(argv[1]), pw,strlen(pw), 0 );
+	//pw[strcspn(pw, "\n")] = '\0';
+	pw_size = strlen(pw);
+	path_len = strlen(argv[1]);
+    ret = syscall(syscall_index, argv[1],path_len, pw, pw_size);
     if(ret < 0){
         printf("error in adding path\n");
         return -1;

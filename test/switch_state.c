@@ -8,8 +8,9 @@ enum rm_state displayMenuAndGetChoice() {
     printf("3. REC-ON\n");
     printf("4. REC-OFF\n");
 
-    char *choice;
+    char choice[8];
     scanf("%s", choice);
+    if(strlen(choice) >= 8) return -1;
     
     if (strcmp(choice, "ON") == 0) {
         printf("Stato selezionato: ON\n");
@@ -30,8 +31,8 @@ enum rm_state displayMenuAndGetChoice() {
 }
 int main(int argc, char** argv){     
 	int ret ;
-	char *pw= malloc(sizeof(char)*256);
-	int syscall_index[5] = {134,156};
+	char pw[256];
+	int syscall_index = 134;
 	int size_pw ;
 	enum rm_state state;
 
@@ -43,29 +44,10 @@ init:
     }  
         printf("enter a password:");
         scanf("%s", pw);
-
-        //fprintf(pw, "ciao");
-        // Rimuovi il newline dalla fine della stringa
-        pw[strcspn(pw, "\n")] = '\0';
         size_pw= strlen(pw);
-        ret = syscall(syscall_index[0], state, pw,size_pw);
-        free(pw);
+        ret = syscall(syscall_index, state, pw,size_pw);
         if(ret == -1){
             perror("\nErrore nella syscall_switch_state");
-            switch (errno)
-            {
-            case -EPERM:
-                break;
-            case -EINVAL:
-                goto init;
-                break;
-            case -ENOEXEC:
-                printf("\npassword sbagliata, riprova");
-                break;
-            default:
-                printf("\nerrore generico invocando system call switch_state");
-                break;
-            } 
         }
 
 	return 0;

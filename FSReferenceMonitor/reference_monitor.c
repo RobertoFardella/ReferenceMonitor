@@ -17,6 +17,7 @@ MODULE_AUTHOR("Roberto Fardella <roberto.fard@gmail.com>");
 MODULE_DESCRIPTION("Linux Security Module (LSM) for file protection");
 
 /* The kernel functions we want to hooks: */
+
 const char* security_file_open_hook_name = "security_file_open";
 const char* security_inode_setattr_hook_name = "security_inode_setattr";
 const char* security_inode_create_hook_name = "security_inode_create";
@@ -27,22 +28,23 @@ const char* security_inode_rmdir_hook_name = "security_inode_rmdir";
 const char* security_inode_mknod_hook_name = "security_inode_mknod";
 const char* security_inode_mkdir_hook_name = "security_inode_mkdir" ;
 const char* security_inode_rename_hook_name = "security_inode_rename";
-static ref_mon *rm;
+
 unsigned long *nisyscall;
 unsigned long cr0;
+ref_mon *rm;
 
 void deferred_logger_handler(struct work_struct* data);
-static int the_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
-static int security_file_open_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
-static int inode_create_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
-static int inode_link_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
-static int inode_unlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
-static int inode_symlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
-static int inode_mkdir_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
-static int inode_rmdir_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
-static int inode_mknod_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
-static int inode_rename_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
-static int inode_setattr_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
+ int the_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
+ int security_file_open_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
+ int inode_create_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
+ int inode_link_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
+ int inode_unlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
+ int inode_symlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
+ int inode_mkdir_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
+ int inode_rmdir_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
+ int inode_mknod_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
+ int inode_rename_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
+ int inode_setattr_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
 
 declare_kretprobe(security_inode_create_probe, inode_create_pre_hook, the_hook,sizeof(struct log_info));
 declare_kretprobe(security_file_open_probe, security_file_open_pre_hook, the_hook,sizeof(struct log_info));
@@ -60,11 +62,11 @@ declare_kretprobe(security_inode_setattr_probe, inode_setattr_pre_hook, the_hook
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
 __SYSCALL_DEFINEx(3,_switch_state, enum rm_state, state, char __user * , pw, int, len){
 #else
-asmlinkage int sys_switch_state(enum state, char* pw, int len){
+asmlinkage int sys_switch_state(enum state, char __user* pw, int len){
 #endif
     const struct cred *cred = current_cred();
     char* pw_buffer;
-    unsigned char* hash_digest;
+    char* hash_digest ;
 
     if (!uid_eq(cred->euid, GLOBAL_ROOT_UID)){ // Verifica se l'UID effettivo è root
         printk(KERN_INFO "Only the actual root UID can change the status.\n");
@@ -81,25 +83,33 @@ asmlinkage int sys_switch_state(enum state, char* pw, int len){
         return -ENOMEM;
     }
 
-    hash_digest = password_hash(pw_buffer, len);
+    printk("%s: parameter switch_state are %s, %d\n", MODNAME, pw_buffer, strlen(pw_buffer));
+
+    hash_digest = password_hash(pw_buffer, strlen(pw_buffer));
     if(!hash_digest){
+        kfree(pw_buffer);
         printk("%s: computation passwprd hash failed\n", MODNAME);
         return -ENOMEM;
     }
-    kfree(pw_buffer); 
-    printk("%s: hash rm %s, hash calcolata %s", MODNAME, rm->pw_hash, hash_digest);
+    if(pw_buffer) kfree(pw_buffer);
 
+    //printk("%s: hash rm %s, hash calcolata %s", MODNAME, rm->pw_hash, hash_digest);
+    spin_lock(&rm->lock);
     if( strcmp(rm->pw_hash, hash_digest) != 0 ){   
+        spin_unlock(&rm->lock);
+        kfree(hash_digest);
         printk("%s: mismatching of the password\n", MODNAME);
         return -EINVAL; 
-        }
+    }
+    if(hash_digest) kfree(hash_digest);
+   
     
-     
     if(rm->state == state) {
+        spin_unlock(&rm->lock);
         printk("%s: the entered state is already the current one\n", MODNAME);
         return -EINVAL;
     }
-    kfree(hash_digest);
+    
     switch (state)
     {
       case ON:
@@ -124,42 +134,26 @@ asmlinkage int sys_switch_state(enum state, char* pw, int len){
 
     default:
         printk("%s:The inserted state is not valid\n", MODNAME);
+        spin_unlock(&rm->lock);
         return -EINVAL;
     }
+    spin_unlock(&rm->lock);
     return rm->state;
 }
 
-/*sys_manage_link: */
+/*sys_print_blacklist: print the paths of the blacklist (they need to be seen via dmesg)*/
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-__SYSCALL_DEFINEx(5,_manage_link, char *, buffer_path, int, len ,char*, pw,int, pw_size, int, op){
+__SYSCALL_DEFINEx(2 ,_print_blacklist, char __user *, pw, int, pw_size){
 #else
-asmlinkage int sys_manage_link(char* buffer_path, int len, char* pw,int pw_size, int op){
+asmlinkage int sys_print_blacklist(char __user * pw, int pw_size){
 #endif
-  
-    const struct cred *cred = current_cred();
-    struct inode *inode;
-    node * node_ptr;
-    int error;
-    struct list_head *ptr;
-    struct path struct_path;
-    struct list_head * new_node_lh;
-    unsigned char* hash_digest;
-    node* node_ptr_aux;
-    char* pathname;
+    node *node_ptr;
     char* pw_buffer;
-    
-    if (!uid_eq(cred->euid, GLOBAL_ROOT_UID)){ 
-        printk("%s: Only EUID 0 (root) can perform the insert/delete path activity\n", MODNAME);
-        return -EPERM; 
-    }
+    char* hash_digest;
+    struct list_head *ptr;
 
-    if(rm->state == OFF || rm->state == ON){
-        printk("%s: Switch to REC-ON or REC-OFF state in order to perform the insert/delete path activity\n", MODNAME);
-        return -EINVAL;    
-    }
-
-    if(op == 2) goto print; //we skip the passage of parameters from user space to kernel space
+    if(!pw) return -EINVAL;
 
     pw_buffer = safe_copy_from_user(pw, pw_size);
     if(!pw_buffer){
@@ -167,124 +161,245 @@ asmlinkage int sys_manage_link(char* buffer_path, int len, char* pw,int pw_size,
         return -ENOMEM;
     }
 
-    hash_digest = password_hash(pw_buffer, pw_size);
+    hash_digest = password_hash(pw_buffer, strlen(pw_buffer));
     if(!hash_digest){
         printk("%s:password computation hash failed\n", MODNAME);
         return -ENOMEM;
     }
-    kfree(pw_buffer); 
+    spin_lock(&rm->lock);
+    if(strcmp(rm->pw_hash, hash_digest) != 0 ){   
+        spin_unlock(&rm->lock);
+        printk("%s: mismatching of the password\n", MODNAME);
+        kfree(hash_digest);
+        return -EINVAL; 
+    }
+    if(hash_digest)
+        kfree(hash_digest);
+    if(pw_buffer)
+        kfree(pw_buffer);
+    if(list_empty(&rm->blk_head_node->elem)){
+        spin_unlock(&rm->lock);
+        printk("%s: the blacklist is empty\n", MODNAME);
+        return 0;
+    }
 
+    printk("%s: blacklist:\n", MODNAME);
+    list_for_each(ptr,&rm->blk_head_node->elem) {
+        node_ptr =container_of(ptr, node, elem); 
+        printk("%s: path %s\n",MODNAME, node_ptr->path);               
+        //printk("%s: (address element %p, inode->i_ino %lu, path %s, inode %p, dentry %p, prev = %p, next = %p)\n",MODNAME, ptr, node_ptr->inode_cod, node_ptr->path, node_ptr->inode_blk, node_ptr->dentry_blk, ptr->prev, ptr->next);               
+    }
+    spin_unlock(&rm->lock);
+    return 0;
+
+}
+
+/*sys_add_path_blacklist: */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
+__SYSCALL_DEFINEx(4,_add_path_blacklist, char __user*, buffer_path, int, len ,char __user*, pw,int, pw_size){
+#else
+asmlinkage int sys_add_path_blacklist(char __user* buffer_path, int len, char __user* pw,int pw_size){
+#endif
+  
+    const struct cred *cred = current_cred();
+    struct inode *inode ;
+    node * node_ptr ;
+    int error;
+    struct list_head *ptr ;
+    struct path struct_path;
+   
+    char* hash_digest ;
+    node* node_ptr_aux ;
+    char* pathname ;
+    int len_pathname;
+    char* pw_buffer ;
+    
+    if (!uid_eq(cred->euid, GLOBAL_ROOT_UID)){ 
+        printk("%s: Only EUID 0 (root) can perform the insert/delete path activity\n", MODNAME);
+        return -EPERM; 
+    }
+    spin_lock(&rm->lock);
+    if(rm->state == OFF || rm->state == ON){
+        spin_unlock(&rm->lock);
+        printk("%s: Switch to REC-ON or REC-OFF state in order to perform the insert/delete path activity\n", MODNAME);
+        return -EINVAL;    
+    }
+    spin_unlock(&rm->lock);
+
+    if(IS_ERR(pw) || IS_ERR(buffer_path)) return -EINVAL;
+
+    pw_buffer = safe_copy_from_user(pw, pw_size);
+    if(!pw_buffer){
+        printk("%s: error in safe_copy_from_user\n", MODNAME);
+        return -ENOMEM;
+    }
+
+    hash_digest = password_hash(pw_buffer, strlen(pw_buffer));
+    if(!hash_digest){
+        printk("%s:password computation hash failed\n", MODNAME);
+        return -ENOMEM;
+    }
+
+    spin_lock(&rm->lock);
     if( strcmp(rm->pw_hash, hash_digest) != 0 ){   
+        spin_unlock(&rm->lock);
+        printk("%s: mismatching of the password\n", MODNAME);
+        kfree(hash_digest);
+        return -EINVAL; 
+    }
+    spin_unlock(&rm->lock);
+    if(hash_digest) kfree(hash_digest);
+    pathname = safe_copy_from_user(buffer_path, len);
+    if(!pathname){
+        printk("%s: error in safe_copy_from_user\n", MODNAME);
+        return -ENOMEM;
+    }
+    len_pathname = strlen(pathname);
+    printk("%s: parameters sys_add_path are %s %d, %s, %d\n", MODNAME,pw_buffer,strlen(pw_buffer), pathname, strlen(pathname));
+
+    error=kern_path(pathname,LOOKUP_FOLLOW, &struct_path);
+    if(error){
+        printk("%s:kern_path failed, the file or directory doesn't exists \n", MODNAME);
+        return -ENOMEM;
+    }
+
+    spin_lock(&rm->lock);
+    node_ptr = kmalloc(sizeof(node), GFP_ATOMIC);
+    if(!node_ptr) return -ENOMEM;
+
+    //node_ptr->elem = &new_node_lh;
+    node_ptr->path = kstrndup(pathname,len_pathname,GFP_KERNEL);
+    if(!node_ptr->path){
+        printk("%s: kstrdup failed\n", MODNAME);
+        return -ENOMEM;
+    }
+    
+    if(!struct_path.dentry) return -EFAULT;
+    
+    if(pathname) kfree(pathname);
+    
+    inode =  struct_path.dentry->d_inode; //retrieve inode from kern_path
+    if(list_empty(&rm->blk_head_node->elem)) goto insert;
+
+    list_for_each(ptr,&rm->blk_head_node->elem) { /*check if inode is already present*/ 
+        node_ptr_aux =container_of(ptr, node, elem); 
+        if(!node_ptr_aux) return -EFAULT;
+        if(node_ptr_aux->inode_cod == inode->i_ino){
+            printk("%s: the path %s is already present!\n",MODNAME, node_ptr->path);
+            kfree(node_ptr->path);
+            kfree(node_ptr);
+            spin_unlock(&rm->lock);
+            return -EINVAL;
+        }
+    }
+insert:
+    node_ptr->inode_cod = inode->i_ino;
+    node_ptr->inode_blk = inode;
+    node_ptr->dentry_blk = struct_path.dentry;
+    list_add_tail(&node_ptr->elem,&rm->blk_head_node->elem);  // Adding the new node to the blacklist
+    spin_unlock(&rm->lock); 
+    return 0;
+}
+
+
+/*sys_remove_path_blacklist: */
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
+__SYSCALL_DEFINEx(4,_remove_path_blacklist, char __user*, buffer_path, int, len ,char __user*, pw,int, pw_size){
+#else
+asmlinkage int sys_remove_path_blacklist(char __user* buffer_path, int len, char __user* pw,int pw_size){
+#endif
+  
+    const struct cred *cred = current_cred();
+    node * node_ptr;
+    int error;
+    struct list_head *ptr;
+    struct path struct_path;
+    char* hash_digest;
+    char* pathname;
+    char* pw_buffer;
+
+    if (!uid_eq(cred->euid, GLOBAL_ROOT_UID)){ 
+        printk("%s: Only EUID 0 (root) can perform the insert/delete path activity\n", MODNAME);
+        return -EPERM; 
+    }
+    spin_lock(&rm->lock);
+    if(rm->state == OFF || rm->state == ON){
+        spin_unlock(&rm->lock);
+        printk("%s: Switch to REC-ON or REC-OFF state in order to perform the insert/delete path activity\n", MODNAME);
+        return -EINVAL;    
+    }
+    spin_unlock(&rm->lock);
+
+    pw_buffer = safe_copy_from_user(pw, pw_size);
+    if(!pw_buffer){
+        printk("%s: error in safe_copy_from_user\n", MODNAME);
+        return -ENOMEM;
+    }
+
+    hash_digest = password_hash(pw_buffer, strlen(pw_buffer));
+    if(!hash_digest){
+        printk("%s:password computation hash failed\n", MODNAME);
+        return -ENOMEM;
+    }
+    
+    spin_lock(&rm->lock);
+    if( strcmp(rm->pw_hash, hash_digest) != 0 ){   
+        spin_unlock(&rm->lock);
         printk("%s: mismatching of the password\n", MODNAME);
         return -EINVAL; 
-        }
+    }
+    spin_unlock(&rm->lock);
 
     pathname = safe_copy_from_user(buffer_path, len);
     if(!pathname){
         printk("%s: error in safe_copy_from_user\n", MODNAME);
         return -ENOMEM;
     }
+
+    printk("%s: parameters sys_remove_path are %s %d, %s, %d", MODNAME,pw_buffer,strlen(pw_buffer), pathname, strlen(pathname));
+
     error=kern_path(pathname,LOOKUP_FOLLOW, &struct_path);
     if(error){
-        kfree(pathname);
         printk("%s:kern_path failed, the file or directory doesn't exists \n", MODNAME);
         return -ENOMEM;
     }
 
-print:
+    /*delete path phase*/
+
     spin_lock(&rm->lock);
 
-    if(op == 0){ //adding path
-            
-            new_node_lh = kmalloc(sizeof(struct list_head), GFP_KERNEL);
-            if (new_node_lh == NULL) {
-                spin_unlock(&rm->lock);
-                printk("%s:allocation of new node into the list failed \n",MODNAME);
-                return -ENOMEM;
-            }
-            
-            node_ptr = list_entry(new_node_lh, node, elem); 
-            node_ptr->path = kstrdup(pathname,GFP_KERNEL);
-            if(!node_ptr->path){
-                spin_unlock(&rm->lock);
-                printk("%s: kstrdup failed\n", MODNAME);
-                return -ENOMEM;
-            }
-            
-            inode =  struct_path.dentry->d_inode; //retrieve inode from kern_path
-            
-            /*check if inode is already present*/
-            if(list_empty(&rm->blk_head_node.elem)) goto ok; //if balcklist is empty, no check if a path is already present
-            
-            
-            list_for_each(ptr, &rm->blk_head_node.elem) {
-                node_ptr_aux = list_entry(ptr, node, elem);
-                
-                if(node_ptr_aux->inode_cod == inode->i_ino){
-                    printk("%s: the path %s is already present!\n",MODNAME, node_ptr->path);
-                    kfree(new_node_lh);
-                    kfree(node_ptr->path);
-                    spin_unlock(&rm->lock);
-                    return -EINVAL;
-                }
-            }
-ok:
-            node_ptr->inode_cod = inode->i_ino;
-            node_ptr->inode_blk = inode;
-            node_ptr->dentry_blk = struct_path.dentry;
-            kfree(pathname);
-            list_add_tail(new_node_lh, &rm->blk_head_node.elem);  // Adding the new node to the blacklist
-            spin_unlock(&rm->lock);
-    }
-    else if(op == 1){ //removing path
-        if(list_empty(&rm->blk_head_node.elem)){
-            kfree(pathname);
+    if(list_empty(&rm->blk_head_node->elem)){ //check if the blacklist is empty 
             spin_unlock(&rm->lock);
             printk("%s: the blacklist is empty\n", MODNAME);
             return -EFAULT;
-        }
-        list_for_each(ptr, &rm->blk_head_node.elem) {
-            node_ptr = list_entry(ptr, node, elem);
+    }
+        list_for_each(ptr,&rm->blk_head_node->elem) {  
+            node_ptr =container_of(ptr, node, elem);
             if(strcmp(node_ptr->path , pathname) == 0){ 
                 list_del(ptr);
-                kfree(pathname);
                 spin_unlock(&rm->lock);
                 printk("%s: path removed correctly \n", MODNAME);
                 return 0;
             }
         }
-        kfree(pathname);
+
         spin_unlock(&rm->lock);
         printk("%s: path to remove not found \n", MODNAME);
         return -EINVAL;
-    }
-    else{ //list path , the first parameter pathname of the syscall sys_manage_link, can be NULL
-          ////if the value of op is 2, print the paths of the blacklist (they need to be seen via dmesg)
-        if(list_empty(&rm->blk_head_node.elem)){
-            spin_unlock(&rm->lock);
-            printk("%s: the blacklist is empty\n", MODNAME);
-            return -EFAULT;
-        }
 
-        printk("%s: blacklist:\n", MODNAME);
-        list_for_each(ptr, &rm->blk_head_node.elem) {
-            node_ptr = list_entry(ptr, node, elem); 
-            printk("%s: (address element %p, inode->i_ino %lu, path %s, inode %p, dentry %p, prev = %p, next = %p)\n",MODNAME, ptr, node_ptr->inode_cod, node_ptr->path, node_ptr->inode_blk, node_ptr->dentry_blk, ptr->prev, ptr->next);               
-        }
-        spin_unlock(&rm->lock);
-    }
-    
-    return 0;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-static unsigned long sys_switch_state = (unsigned long) __x64_sys_switch_state;	     
-static unsigned long sys_manage_link = (unsigned long) __x64_sys_manage_link;   
+unsigned long sys_switch_state = (unsigned long) __x64_sys_switch_state;	     
+unsigned long sys_add_path_blacklist = (unsigned long) __x64_sys_add_path_blacklist; 
+unsigned long sys_remove_path_blacklist = (unsigned long) __x64_sys_remove_path_blacklist; 
+unsigned long sys_print_blacklist = (unsigned long) __x64_sys_print_blacklist;   
 #endif
 
 unsigned long systemcall_table=0x0;
 module_param(systemcall_table,ulong,0660);
-char* password;
+char *password=NULL;
 module_param(password, charp, 0444); // 0444 imposta i permessi di sola lettura (ro)
 int free_entries[15];
 module_param_array(free_entries,int,NULL,0660);
@@ -326,17 +441,18 @@ static inline void unprotect_memory(void){
     
     
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node.elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
     file = (struct file*)regs->di;
     mode = file->f_mode;
-    list_for_each(ptr_h, &rm->blk_head_node.elem) {
+   list_for_each(ptr_h,&rm->blk_head_node->elem) {
         node_ptr_h = (node*)list_entry(ptr_h, node, elem);
         if(!node_ptr_h) goto leave;
         if((node_ptr_h->inode_cod  == file->f_inode->i_ino)  &&  ((mode & FMODE_WRITE) || (mode & FMODE_PWRITE))){  
+                spin_unlock(&rm->lock);
                 printk("%s: write file denied\n", MODNAME);
                 log_info = (struct log_info*) ri->data;
                 log_info->pathname = node_ptr_h->path;
-                spin_unlock(&rm->lock);
+                
                 return 0;
         }
     }
@@ -364,20 +480,20 @@ int inode_create_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     node* node_ptr_h;
     struct list_head* ptr_h;
     struct log_info* log_info;
-   
 
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node.elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
     parent_inode = (struct inode*)regs->di;
     parent_dentry = d_find_alias(parent_inode);
-    list_for_each(ptr_h, &rm->blk_head_node.elem) {
+   list_for_each(ptr_h,&rm->blk_head_node->elem) {
             node_ptr_h = (node*)list_entry(ptr_h, node, elem);
             if(!node_ptr_h) goto leave;
             if((parent_inode->i_ino == node_ptr_h->inode_cod)|| (is_subdir(parent_dentry,node_ptr_h->dentry_blk))){
+                        spin_unlock(&rm->lock);
                         printk("%s: vfs_create denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         log_info->pathname = node_ptr_h->path;
-                        spin_unlock(&rm->lock);
+                        
                         return 0;
             }
     }
@@ -407,23 +523,22 @@ int inode_link_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     struct list_head* ptr_h;
     struct log_info* log_info;
 
-    
-
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node.elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
 
     parent_inode = (struct inode* )regs->si;
     old_dentry = (struct dentry* )regs->di;
 
     parent_dentry = d_find_alias(parent_inode);
-    list_for_each(ptr_h, &rm->blk_head_node.elem) {
+   list_for_each(ptr_h,&rm->blk_head_node->elem) {
             node_ptr_h = (node*)list_entry(ptr_h, node, elem);
             if(!node_ptr_h) goto leave;
             if(node_ptr_h->inode_cod == old_dentry->d_inode->i_ino || (is_subdir(parent_dentry,node_ptr_h->dentry_blk))){
+                        spin_unlock(&rm->lock);
                         printk("%s: vfs_link denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         log_info->pathname = node_ptr_h->path;
-                        spin_unlock(&rm->lock);
+                        
                         return 0;
             }
         }
@@ -449,21 +564,20 @@ int inode_unlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
         struct list_head* ptr_h;
         struct dentry* parent_dentry;
 
-        
-
         spin_lock(&rm->lock);
-        if(list_empty(&rm->blk_head_node.elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+        if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
         parent_inode = (struct inode* )regs->di;
         dentry = (struct dentry*) regs->si;
         parent_dentry = d_find_alias(parent_inode); //dentry structure for an existing link to the file
-        list_for_each(ptr_h, &rm->blk_head_node.elem) {
+       list_for_each(ptr_h,&rm->blk_head_node->elem) {
             node_ptr_h = (node*)list_entry(ptr_h, node, elem);
             
             if((dentry->d_inode->i_ino == node_ptr_h->inode_cod) || (is_subdir(parent_dentry,node_ptr_h->dentry_blk))){
+                        spin_unlock(&rm->lock);
                         printk("%s: vfs_unlink denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         log_info->pathname = node_ptr_h->path;
-                        spin_unlock(&rm->lock);
+                        
                         return 0;
             }
         }
@@ -492,19 +606,18 @@ int inode_symlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs)
     node* node_ptr_h;
     struct list_head* ptr_h;
 
-    
-    
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node.elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
     parent_inode = (struct inode*)regs->di;
-    list_for_each(ptr_h, &rm->blk_head_node.elem) {
+   list_for_each(ptr_h,&rm->blk_head_node->elem) {
         node_ptr_h = (node*)list_entry(ptr_h, node, elem);
         if(!node_ptr_h) goto leave;
         if(parent_inode->i_ino == (get_parent_inode(node_ptr_h->inode_blk))->i_ino || is_subdir(d_find_alias(parent_inode), node_ptr_h->dentry_blk) ){
+                    spin_unlock(&rm->lock);
                     printk("%s: vfs_symlink denied\n ", MODNAME);
                     log_info = (struct log_info*) ri->data;
                     log_info->pathname = node_ptr_h->path;
-                    spin_unlock(&rm->lock);
+                    
                     return 0;
         }
     }
@@ -531,20 +644,19 @@ int inode_mkdir_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     struct list_head* ptr_h;
     struct dentry* parent_dentry;
 
-    
-
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node.elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
     parent_inode = (struct inode*)regs->di;
     parent_dentry = d_find_alias(parent_inode);
-    list_for_each(ptr_h, &rm->blk_head_node.elem) {
+   list_for_each(ptr_h,&rm->blk_head_node->elem) { 
             node_ptr_h = (node*)list_entry(ptr_h, node, elem);
             if(!node_ptr_h) goto leave;
             if((parent_dentry->d_inode->i_ino == (get_parent_inode(node_ptr_h->inode_blk))->i_ino) || (is_subdir(parent_dentry,node_ptr_h->dentry_blk))){
+                        spin_unlock(&rm->lock);
                         printk("%s: vfs_mkdir denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         log_info->pathname = node_ptr_h->path;
-                        spin_unlock(&rm->lock);
+                        
                         return 0;
             }
     }
@@ -569,18 +681,18 @@ int inode_rmdir_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     node* node_ptr_h;
     struct list_head* ptr_h;
 
-   
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node.elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
     dentry = (struct dentry*)regs->si;
-    list_for_each(ptr_h, &rm->blk_head_node.elem) {
+   list_for_each(ptr_h,&rm->blk_head_node->elem) {
             node_ptr_h = (node*)list_entry(ptr_h, node, elem);
             if(!node_ptr_h) goto leave;
             if(dentry->d_inode->i_ino == node_ptr_h->inode_cod || (is_subdir(dentry,node_ptr_h->dentry_blk))){
+                        spin_unlock(&rm->lock);
                         printk("%s: vfs_rmdir denied\n", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         log_info->pathname = node_ptr_h->path;
-                        spin_unlock(&rm->lock);
+                        
                         return 0;
             }
     }
@@ -608,19 +720,18 @@ int inode_mknod_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     node* node_ptr_h;
     struct list_head* ptr_h;
 
-    
-
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node.elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
     inode = (struct inode*)regs->di;
-    list_for_each(ptr_h, &rm->blk_head_node.elem) {
+   list_for_each(ptr_h,&rm->blk_head_node->elem) {
             node_ptr_h = (node*)list_entry(ptr_h, node, elem);
             if(!node_ptr_h) goto leave;
             if(inode->i_ino == node_ptr_h->inode_cod || (is_subdir(d_find_alias(inode),node_ptr_h->dentry_blk))){
+                        spin_unlock(&rm->lock);
                         printk("%s: vfs_rmdir denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         log_info->pathname = node_ptr_h->path;
-                        spin_unlock(&rm->lock);
+                        
                         return 0;
             }
     }
@@ -646,22 +757,22 @@ int inode_rename_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     //struct inode* new_inode = new_dentry->d_inode;
     node* node_ptr_h;
     struct list_head* ptr_h;
-    
 
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node.elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
 
     old_dentry = (struct dentry*)regs->si;
     old_inode = old_dentry->d_inode;
 
-    list_for_each(ptr_h, &rm->blk_head_node.elem) {
+   list_for_each(ptr_h,&rm->blk_head_node->elem) {
             node_ptr_h = (node*)list_entry(ptr_h, node, elem);
             if(!node_ptr_h) goto leave;
             if(old_inode->i_ino == node_ptr_h->inode_cod){
+                        spin_unlock(&rm->lock);
                         printk("%s: vfs_rename denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         log_info->pathname = node_ptr_h->path;
-                        spin_unlock(&rm->lock);
+                        
                         return 0;          
             }
     }
@@ -689,14 +800,12 @@ int inode_setattr_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs)
     struct list_head *ptr_h;
     unsigned long i_ino;
 
-    
-
     spin_lock(&rm->lock);
     
-    if(list_empty(&rm->blk_head_node.elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
     dentry = (struct dentry*)regs->di;
     i_ino = dentry->d_inode->i_ino;
-    list_for_each(ptr_h, &rm->blk_head_node.elem) {
+   list_for_each(ptr_h,&rm->blk_head_node->elem) {
             node_ptr_h = (node*)list_entry(ptr_h, node, elem);
             if(!node_ptr_h) goto leave;
             if(i_ino == node_ptr_h->inode_cod){
@@ -713,11 +822,11 @@ leave:
     return 1;
 }
 
-
 /* The_hook function is the exit handler shared among all the kretprobes.
 It blocks any attempt to write access and performs deferred work to write 
 various log information to a file.
 */
+
 int the_hook(struct kretprobe_instance *ri, struct pt_regs *regs){
     regs->ax = -EACCES; 
     struct log_info *log_info;
@@ -744,7 +853,10 @@ void deferred_logger_handler(struct work_struct* data){
 
     pkd_w = container_of(data, packed_work , work);
     
-    printk("%s", pkd_w->log_info.pathname);
+    if(!pkd_w){
+        printk("%s: packed_work not retrieved\n", MODNAME);
+        return;
+    }
     if(!pkd_w->log_info.pathname){
         printk("%s: pathname not valid\n", MODNAME);
         return;
@@ -763,14 +875,15 @@ void deferred_logger_handler(struct work_struct* data){
         return;
     }
 
-    printk("%s: ret %d write data to file: %s\n",MODNAME, ret, line);
+    if(pkd_w)
+        kfree(pkd_w);
     return;
 }
 
 int init_module(void) {
     unsigned long ** sys_call_table;
     char* digest_crypto_hash;
-
+   
     /* initializing struct ref_mon rm */
     rm =  kmalloc(sizeof(ref_mon), GFP_KERNEL); //alloc memory in kernel space
 
@@ -785,30 +898,23 @@ int init_module(void) {
         return PTR_ERR(rm->log_file);
     }
 
-    printk("%s: the unique file opened correctly\n", MODNAME);
-
-    //pw_user = safe_copy_from_user(password, strlen(password));
-
-
     digest_crypto_hash = password_hash(password, strlen(password));//the password has been passed as a parameter of the module
-    password= NULL;
+
     if(!digest_crypto_hash){
         printk("%s: failed to install the password in the reference monitor\n", MODNAME);
         return 0;
     }
 
-    rm->pw_hash = kstrdup(digest_crypto_hash, GFP_KERNEL);
+    rm->pw_hash = kstrdup(digest_crypto_hash, GFP_KERNEL); //password initialization
+    
     if(IS_ERR(rm->pw_hash)){
         printk("%s: digest of the password not computed\n", MODNAME);
         return PTR_ERR(rm->pw_hash);
     }
-
-    kfree(digest_crypto_hash);
-    
+    rm->blk_head_node = kmalloc(sizeof(node), GFP_ATOMIC);
     rm->state = OFF;// init state of reference monitor
-    
-    INIT_LIST_HEAD(&rm->blk_head_node.elem); 
-    
+    INIT_LIST_HEAD(&rm->blk_head_node->elem); //blacklist initialization
+   
     rm->queue_work = alloc_workqueue("REFERENCE_MONITOR_WORKQUEUE", WQ_MEM_RECLAIM, 1); // create an own workqueue 
     if(unlikely(!rm->queue_work)) {
         printk(KERN_ERR "%s: creation workqueue failed\n", MODNAME);
@@ -848,13 +954,17 @@ int init_module(void) {
         sys_call_table = (void*) systemcall_table; 
         nisyscall = sys_call_table[free_entries[0]]; //mi serve poi nel cleanup
         sys_call_table[free_entries[0]] = (unsigned long*)sys_switch_state;
-        sys_call_table[free_entries[1]] = (unsigned long*)sys_manage_link;
+        sys_call_table[free_entries[1]] = (unsigned long*)sys_add_path_blacklist;
+        sys_call_table[free_entries[2]] = (unsigned long*)sys_remove_path_blacklist;
+        sys_call_table[free_entries[3]] = (unsigned long*)sys_print_blacklist;
         protect_memory();
     }else{
         printk("%s: system call table not avalaible\n", MODNAME);
         return -1;
     }
         printk("%s: module correctly mounted\n", MODNAME);    
+        if(digest_crypto_hash)
+            kfree(digest_crypto_hash);
         return 0;
 
 }
@@ -868,6 +978,8 @@ void cleanup_module(void) {
     sys_call_table = (void*) systemcall_table; 
     sys_call_table[free_entries[0]] = nisyscall;
     sys_call_table[free_entries[1]] = nisyscall;
+    sys_call_table[free_entries[2]] = nisyscall;
+    sys_call_table[free_entries[3]] = nisyscall;
     protect_memory();   
      
     /* unregistering kretprobes*/
@@ -883,13 +995,15 @@ void cleanup_module(void) {
     unregister_kretprobe(&security_inode_setattr_probe);
     
     /*releasing resources*/
-    destroy_workqueue(rm->queue_work); 
-    kfree(rm->pw_hash);
+    if(rm->queue_work)
+        destroy_workqueue(rm->queue_work); 
+    if(rm->pw_hash)
+        kfree(rm->pw_hash);
     if(likely(rm->log_file)) 
         filp_close(rm->log_file, NULL);
-    
-    kfree(rm);
-    
-    
+
+    if(rm)
+        kfree(rm);
+
     printk("%s: shutting down\n",MODNAME);
 }

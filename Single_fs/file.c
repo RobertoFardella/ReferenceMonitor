@@ -29,13 +29,13 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
 
     //printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld) \n",MODNAME, len, *off, file_size);
 
-     mutex_lock(&offset_mutex);
+     
      if(IS_ERR(filp)){
         printk("%s: file is null\n",MOD_NAME);
         return len;
      }
      file_size = filp->f_inode->i_size;
-     
+     mutex_lock(&offset_mutex);
     //check that *off is within boundaries
     if (*off >= file_size){
         mutex_unlock(&offset_mutex);
@@ -63,8 +63,9 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     ret = copy_to_user(buf,bh->b_data + offset, len);  
                                                        
     *off += (len - ret); //incremento di quanti byte effettivamente ho scritto sul file
-    brelse(bh);
     mutex_unlock(&offset_mutex);
+    brelse(bh);
+    
     return len - ret;
 
 }
@@ -164,7 +165,7 @@ struct dentry *onefilefs_lookup(struct inode *parent_inode, struct dentry *child
     struct buffer_head *bh = NULL;
     struct inode *the_inode = NULL;
 
-    printk("%s: running the lookup inode-function for name %s \n",MODNAME,child_dentry->d_name.name);
+    //printk("%s: running the lookup inode-function for name %s \n",MODNAME,child_dentry->d_name.name);
 
     if(!strcmp(child_dentry->d_name.name, UNIQUE_FILE_NAME)){
 	

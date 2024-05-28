@@ -1,5 +1,6 @@
 #include <linux/spinlock.h>
 #include <linux/types.h>
+#include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/errno.h>
 #include <linux/fs.h>
@@ -44,7 +45,7 @@ typedef struct _packed_work{
 typedef struct referenceMonitor
 {
     enum rm_state state; //possible state (ON, OFF, REC-ON, REC-OFF)
-    node blk_head_node; //blacklist head node 
+    node *blk_head_node; //blacklist head node 
 	struct file *log_file;
     struct workqueue_struct *queue_work;
 	char* pw_hash; //hash of password
@@ -70,7 +71,6 @@ do {                                                                            
         return -EINVAL;                                                             \
     }                                                                               \
 } while(0)
-
 
 //functions defined in ./utility/utils.c
 void deferred_logger_handler(struct work_struct* data);
