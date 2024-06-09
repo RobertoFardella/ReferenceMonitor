@@ -1,8 +1,11 @@
 #include "./include/client.h"
 
+/*The program expects one command-line argument, which is the pathname for the FIFO. 
+It checks if the correct number of arguments is provided and displays a usage message if not. 
+The `mknod` function is then used to create the FIFO .*/
 int main(int argc, char** argv){
     int ret;
-    mode_t permissions = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH; // Esempio: permessi 644
+    mode_t permissions = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH; 
     
     if (argc != 2) {
 		fprintf(stderr, "Usage: %s <pathname>\n", argv[0]);

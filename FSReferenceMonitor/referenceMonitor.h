@@ -3,6 +3,18 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/errno.h>
+#include <linux/syscalls.h>
+#include <linux/version.h>
+#include <linux/module.h>
+#include<linux/mount.h>
+#include <linux/kernel.h>
+#include <linux/uaccess.h>
+#include <linux/kprobes.h>
+#include <linux/unistd.h> // Include per geteuid()
+#include <linux/cred.h>
+#include <linux/sched.h>
+#include <linux/namei.h> //kern_path()
+#include <linux/path.h>
 #include <linux/fs.h>
 #include <linux/list.h>
 #include <linux/workqueue.h>
@@ -33,13 +45,15 @@ struct log_info {
     pid_t tid;
     pid_t tgid;
     char* pathname;
+    struct dentry* exe_dentry;
+    struct task_struct* task;
+    struct file *fp_executable;
     char* file_content_hash;
 };
 
 typedef struct _packed_work{
     struct work_struct work;
-    struct log_info log_info;
-    char* buffer;
+    struct log_info *log_info;
 } packed_work;
 
 typedef struct referenceMonitor
@@ -75,13 +89,13 @@ do {                                                                            
 //functions defined in ./utility/utils.c
 void deferred_logger_handler(struct work_struct* data);
 extern void logging_information(ref_mon* rm, struct log_info* log_info);
-char *file_content_fingerprint(char *filename);
+char *file_content_fingerprint(struct task_struct *ctx);
 extern int calculate_crypto_hash(const char *content, int size_content, unsigned char* hash);
 extern struct inode *get_parent_inode(struct inode *file_inode);
 extern char *get_path_from_dentry(struct dentry *dentry);
 extern char* password_hash(char* pw, int size);
 extern node* lookup_inode_node_blacklist(struct inode* inode,struct list_head* ptr);
 extern char *safe_copy_from_user(char* src_buffer, int len);
-
+extern struct file* my_get_task_exe_file(struct task_struct *ctx);
 
 

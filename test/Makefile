@@ -7,13 +7,8 @@ switch_state:
 init_blacklist:
 	gcc test/add_path_blacklist.c -o ./test/add_path_blacklist
 	sudo ./test/add_path_blacklist "/etc/passwd"
-	sudo ./test/add_path_blacklist "/home"
-	sudo ./test/add_path_blacklist "/home/roberto"
 	sudo ./test/add_path_blacklist "/home/ciao"
-	sudo ./test/add_path_blacklist "/etc"
 	sudo ./test/add_path_blacklist "/etc/shadow"
-	sudo ./test/add_path_blacklist "/etc/shadow"
-	sudo ./test/add_path_blacklist "/"
 
 add_path_blacklist:
 	gcc test/add_path_blacklist.c -o ./test/add_path_blacklist

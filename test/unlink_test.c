@@ -4,7 +4,7 @@
 int main(int argc, char** argv){
     int ret;
     if (argc != 2) {
-		fprintf(stderr, "Usage: %s <pathname>\n", argv[0]);
+		fprintf(stderr, "Usage: %s path=<pathname>\n", argv[0]);
 		return 1;
 	}
     ret = unlink(argv[1]);

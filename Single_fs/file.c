@@ -26,9 +26,6 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     int ret;
     loff_t offset;
     int block_to_read;//index of the block to be read from device
-
-    //printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld) \n",MODNAME, len, *off, file_size);
-
      
      if(IS_ERR(filp)){
         printk("%s: file is null\n",MOD_NAME);
@@ -52,8 +49,6 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
 
     //compute the actual index of the the block to be read from device
     block_to_read = *off / DEFAULT_BLOCK_SIZE + 2; //the value 2 accounts for superblock and file-inode on device
-    
-    //printk("%s: read operation must access block %d of the device",MODNAME, block_to_read);
 
     bh = (struct buffer_head *)sb_bread(filp->f_path.dentry->d_inode->i_sb, block_to_read);
     if(!bh){
@@ -78,85 +73,99 @@ ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
     struct block_device *bdev; 
     struct buffer_head *bh;
 	ssize_t ret;
+    int start = 0;
     int payload_size; //lunghezza del buffer da scrivere
     char* buffer_data;
 
-    mutex_lock(&offset_mutex);
     file = iocb->ki_filp;
     payload_size = from->count;
+
     if(IS_ERR(file)){
-        printk("%s: file is null\n",MOD_NAME);
+        printk("%s: file not open correctly\n",MOD_NAME);
         return payload_size;
      }
-    
-    filp_inode = file->f_inode;
-    buffer_data = kmalloc(payload_size, GFP_KERNEL);
-    if(!buffer_data) return -ENOMEM;
 
+     if (!iov_iter_count(from)){ //Check if there is data to write
+        printk("%s: no data to write into log file\n", MOD_NAME);
+        return payload_size;
+    }
     
-iter:
-    size_file = i_size_read(filp_inode);
+    buffer_data = kmalloc(payload_size, GFP_KERNEL);
+    if(!buffer_data) { 
+        printk("%s: memory allocation failed\n", MOD_NAME);
+        return -ENOMEM;
+    }
+    
+    ret = copy_from_iter((void*)buffer_data, (size_t) payload_size, from);
+    if(ret != payload_size){
+        kfree(buffer_data);
+        return ret;
+    }
+    mutex_lock(&offset_mutex);
+    filp_inode = file->f_inode; //retrieve the inode of the file
+    size_file = i_size_read(filp_inode); //determine the size of the file
+    
     blk_offset = size_file % DEFAULT_BLOCK_SIZE;    //determine the block level offset for the operation
-    blk_to_write = size_file / DEFAULT_BLOCK_SIZE + 2; //the value 2 accounts for superblock and file-inode on device
+    blk_to_write = size_file / DEFAULT_BLOCK_SIZE + 2; //determine the block to write, the value 2 accounts for superblock and file-inode on device
+
+    if(payload_size > DEFAULT_BLOCK_SIZE - blk_offset){ //se la dimensione del buffer da scrivere è superiore allo spazio vuoto all'intenro di un blocco
+        bh = (struct buffer_head *)sb_bread(file->f_path.dentry->d_inode->i_sb, blk_to_write);
+        if(!bh){
+            mutex_unlock(&offset_mutex);
+            kfree(buffer_data);
+            return -EIO;
+        }
+
+        bdev = bh->b_bdev;  /* device where block resides */
+        if (bdev->bd_read_only){
+            mutex_unlock(&offset_mutex);
+            kfree(buffer_data);
+            return -EPERM;
+
+        }
+
+        memcpy(bh->b_data + blk_offset, buffer_data,  DEFAULT_BLOCK_SIZE - blk_offset);
+        i_size_write(filp_inode, size_file + DEFAULT_BLOCK_SIZE - blk_offset);
+        payload_size -= DEFAULT_BLOCK_SIZE - blk_offset;
+        start = DEFAULT_BLOCK_SIZE - blk_offset;
+        mark_buffer_dirty(bh);
+        brelse(bh);
+        size_file = i_size_read(filp_inode); 
+        blk_offset = 0;
+        blk_to_write++;
+    }
     
     bh = (struct buffer_head *)sb_bread(file->f_path.dentry->d_inode->i_sb, blk_to_write);
     if(!bh){
-        kfree(buffer_data);
         mutex_unlock(&offset_mutex);
+        kfree(buffer_data);
 	    return -EIO;
     }
 
     bdev = bh->b_bdev;  /* device where block resides */
-
     if (bdev->bd_read_only){
-		kfree(buffer_data);
         mutex_unlock(&offset_mutex);
+		kfree(buffer_data);
         return -EPERM;
 
     }
 
-	if (!iov_iter_count(from)){ //Check if there is data to write
-		kfree(buffer_data);
-        mutex_unlock(&offset_mutex);
-        return 0;
-    }
-
-    ret = copy_from_iter((void*)buffer_data, (size_t) payload_size, from);
-    if(ret != payload_size) {
-        kfree(buffer_data);
-        mutex_unlock(&offset_mutex);
-        printk("%s: all bytes are not copied", MOD_NAME);
-        return -ENOMEM;
-    }
-
-     //append operation
-    if(payload_size > DEFAULT_BLOCK_SIZE - blk_offset){ //se la dimensione del buffer da scrivere è superiore allo spazio vuoto all'intenro di un blocco
-        //fill all residuals of the current block
-        memcpy(bh->b_data + blk_offset, buffer_data,  DEFAULT_BLOCK_SIZE - blk_offset);
-        blk_to_write++; //advance block of device
-        i_size_write(filp_inode, size_file + DEFAULT_BLOCK_SIZE - blk_offset);
-        payload_size -=  DEFAULT_BLOCK_SIZE - blk_offset;
-        mark_buffer_dirty(bh);
-        goto iter;
+    
+    if(start == 0)
+        memcpy(bh->b_data + blk_offset, buffer_data , payload_size);
         
-    }
-    else{
-        memcpy(bh->b_data + blk_offset, buffer_data, payload_size);
-        i_size_write(filp_inode, size_file + payload_size);
-        mark_buffer_dirty(bh);
-        
-    }
+    else
+        memcpy(bh->b_data + blk_offset, buffer_data + start , payload_size);
+
+    i_size_write(filp_inode, size_file + payload_size);
+    mark_buffer_dirty(bh);
     brelse(bh);
-    kfree(buffer_data);
     mutex_unlock(&offset_mutex);
-   
+    kfree(buffer_data);
 	return ret;    
 }
 
-ssize_t onefilefs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *off){
-    printk("write op invocated\n");
-    return 0;
-}
+
 
 struct dentry *onefilefs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags) {
 
@@ -164,8 +173,6 @@ struct dentry *onefilefs_lookup(struct inode *parent_inode, struct dentry *child
     struct super_block *sb = parent_inode->i_sb;
     struct buffer_head *bh = NULL;
     struct inode *the_inode = NULL;
-
-    //printk("%s: running the lookup inode-function for name %s \n",MODNAME,child_dentry->d_name.name);
 
     if(!strcmp(child_dentry->d_name.name, UNIQUE_FILE_NAME)){
 	
@@ -225,6 +232,5 @@ const struct inode_operations onefilefs_inode_ops = {
 const struct file_operations onefilefs_file_operations = {
     .owner = THIS_MODULE,
     .read = onefilefs_read,
-    .write_iter = onefilefs_write_iter,
-    //.write = onefilefs_write, kernel_write not supported!
+    .write_iter = onefilefs_write_iter, //kernel side
 };

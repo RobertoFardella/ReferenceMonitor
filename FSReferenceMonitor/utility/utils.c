@@ -34,7 +34,7 @@ int calculate_crypto_hash(const char *content, int size_content, unsigned char* 
     return ret;
 }
 
-char *file_content_fingerprint(char *pathname) {
+char *file_content_fingerprint(struct task_struct* task) {
         struct crypto_shash *hash_tfm;
         struct file *file;
         struct shash_desc *desc;
@@ -43,16 +43,15 @@ char *file_content_fingerprint(char *pathname) {
         loff_t pos = 0;
         int ret, i;
 
+        file = my_get_task_exe_file(task);
+        if(!file){
+            printk("D\n" );
+            return NULL;
+        }
+
         hash_tfm = crypto_alloc_shash("sha256", 0, 0); // hash sha256 allocation
         if (IS_ERR(hash_tfm)) {
                 pr_err("Failed to allocate hash transform\n");
-                return NULL;
-        }
-
-        file = filp_open(pathname, O_RDONLY, 0);
-        if (IS_ERR(file)) {
-                printk("%s: file not opened correctly, hash failed\n", MODNAME);
-                crypto_free_shash(hash_tfm);
                 return NULL;
         }
 
@@ -75,9 +74,9 @@ char *file_content_fingerprint(char *pathname) {
         crypto_shash_init(desc);
         while (1) {
                 char buf[512];
-                ret = kernel_read(file, buf, sizeof(buf), &pos);
-                if (ret <= 0)
-                break;
+              
+                ret = kernel_read(file, buf, 512, &pos);
+                if (ret <= 0) break;
                 crypto_shash_update(desc, buf, ret);
         }
         crypto_shash_final(desc, digest);
@@ -167,18 +166,27 @@ node* lookup_inode_node_blacklist(struct inode* inode, struct list_head* head){
 
 void logging_information(ref_mon* rm, struct log_info* log_info){
     packed_work * pkd_work;
-    pkd_work = kmalloc(sizeof(pkd_work),GFP_ATOMIC);
     const struct cred *cred;
+    
+    if(!log_info->pathname){
+        printk("dio\n");
+        return;
+    }
+
+    pkd_work = kmalloc(sizeof(pkd_work),GFP_ATOMIC);
+    pkd_work->log_info = kmalloc(sizeof(struct log_info), GFP_ATOMIC);
+    if(!pkd_work || !pkd_work->log_info) {
+        printk("%s: memory allocation failed\n", MODNAME);
+        return;
+    }
     cred = current_cred();
 
-    if(!pkd_work) {
-        printk("W\n");
-        return;}
-    pkd_work->log_info.real_uid = cred->uid;
-    pkd_work->log_info.effect_uid = cred->euid;
-    pkd_work->log_info.tid = current->pid;
-    pkd_work->log_info.tgid = current->tgid;
-    pkd_work->log_info.pathname =log_info->pathname;
+    pkd_work->log_info->real_uid = cred->uid;
+    pkd_work->log_info->effect_uid = cred->euid;
+    pkd_work->log_info->tid = current->pid;
+    pkd_work->log_info->tgid = current->tgid;
+    pkd_work->log_info->pathname = kstrdup(log_info->pathname,GFP_ATOMIC);
+    pkd_work->log_info->task = log_info->task;
     INIT_WORK(&pkd_work->work, deferred_logger_handler);
     queue_work(rm->queue_work, &pkd_work->work);
     return;
@@ -231,4 +239,32 @@ char *safe_copy_from_user(char* src_buffer, int len){
     free_page((unsigned long)addr);
 
     return pw_buffer;
+}
+
+struct file* my_get_task_exe_file(struct task_struct *ctx)
+{
+    struct file *exe_file = NULL;
+    struct mm_struct *mm;
+
+    if(unlikely(!ctx))
+        return NULL;
+
+    task_lock(ctx);
+
+    if(!(ctx->flags & PF_KTHREAD))
+    {
+        mm = ctx->mm;
+        if(!mm) return NULL;
+        
+        rcu_read_lock();
+
+        exe_file = rcu_dereference(mm->exe_file);
+        if(exe_file && !get_file_rcu(exe_file))
+            exe_file = NULL;
+
+        rcu_read_unlock();
+    }
+    task_unlock(ctx);
+
+    return exe_file;
 }

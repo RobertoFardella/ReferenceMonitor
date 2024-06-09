@@ -1,17 +1,16 @@
 #include "./include/client.h"
 
 
-enum rm_state displayMenuAndGetChoice() {
+enum rm_state displayMenuAndGetChoice(char* choice) {
     printf("Seleziona uno stato:\n");
     printf("1. ON\n");
     printf("2. OFF\n");
     printf("3. REC-ON\n");
     printf("4. REC-OFF\n");
 
-    char choice[8];
+    
     scanf("%s", choice);
     if(strlen(choice) >= 8) return -1;
-    
     if (strcmp(choice, "ON") == 0) {
         printf("Stato selezionato: ON\n");
         return ON;
@@ -35,13 +34,15 @@ int main(int argc, char** argv){
 	int syscall_index = 134;
 	int size_pw ;
 	enum rm_state state;
-
+    char *choice;
+    choice = malloc(sizeof(char)*64);
 init:
-    state = displayMenuAndGetChoice();
+    state = displayMenuAndGetChoice(choice);
     if(state == -1){ 
         printf("selezionare un input valido,riprova\n");
         goto init;
     }  
+        free(choice);
         printf("enter a password:");
         scanf("%s", pw);
         size_pw= strlen(pw);
