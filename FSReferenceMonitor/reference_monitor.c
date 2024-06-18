@@ -22,8 +22,18 @@ unsigned long *nisyscall;
 unsigned long cr0;
 ref_mon *rm;
 
+/* The_hook function is the exit handler shared among all the kretprobes.
+It blocks any attempt to write access and performs deferred work to write 
+various log information to a file.
+*/
 void deferred_logger_handler(struct work_struct* data);
+
+/* The_hook function is the exit handler shared among all the kretprobes.
+It blocks any attempt to write access and performs deferred work to write 
+various log information to a file.
+*/
  int the_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
+
  int security_file_open_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
  int inode_create_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
  int inode_link_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
@@ -35,6 +45,7 @@ void deferred_logger_handler(struct work_struct* data);
  int inode_rename_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
  int inode_setattr_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs);
 
+/*setup kretprobes*/
 declare_kretprobe(security_inode_create_probe, inode_create_pre_hook, the_hook,sizeof(struct log_info));
 declare_kretprobe(security_file_open_probe, security_file_open_pre_hook, the_hook,sizeof(struct log_info));
 declare_kretprobe(security_inode_link_probe, inode_link_pre_hook, the_hook,sizeof(struct log_info));
@@ -153,24 +164,28 @@ asmlinkage int sys_print_blacklist(char __user * pw, int pw_size){
         printk("%s:password computation hash failed\n", MODNAME);
         return -ENOMEM;
     }
+
     spin_lock(&rm->lock);
-    if(strcmp(rm->pw_hash, hash_digest) != 0 ){   
+    if(strcmp(rm->pw_hash, hash_digest) != 0 ){   //compare password hash
         spin_unlock(&rm->lock);
         printk("%s: mismatching of the password\n", MODNAME);
         kfree(hash_digest);
         kfree(pw_buffer);
         return -EINVAL; 
     }
+    /*releasing resources*/
     if(hash_digest)
         kfree(hash_digest);
     if(pw_buffer)
         kfree(pw_buffer);
+
+    //check if blacklist is empty
     if(list_empty(&rm->blk_head_node->elem)){
         spin_unlock(&rm->lock);
         printk("%s: the blacklist is empty\n", MODNAME);
         return 0;
     }
-
+    // prints all paths of blacklist
     printk("%s: blacklist:\n", MODNAME);
     list_for_each(ptr,&rm->blk_head_node->elem) {
         node_ptr =container_of(ptr, node, elem); 
@@ -201,10 +216,12 @@ asmlinkage int sys_add_path_blacklist(char __user* buffer_path, int len, char __
     int len_pathname;
     char* pw_buffer ;
     
+    //check EUID
     if (!uid_eq(cred->euid, GLOBAL_ROOT_UID)){ 
         printk("%s: Only EUID 0 (root) can perform the insert/delete path activity\n", MODNAME);
         return -EPERM; 
     }
+    //check state of the reference monitor
     spin_lock(&rm->lock);
     if(rm->state == OFF || rm->state == ON){
         spin_unlock(&rm->lock);
@@ -213,6 +230,7 @@ asmlinkage int sys_add_path_blacklist(char __user* buffer_path, int len, char __
     }
     spin_unlock(&rm->lock);
 
+    //check input syscall
     if(!pw || !buffer_path) return -EINVAL;
 
     pw_buffer = safe_copy_from_user(pw, pw_size);
@@ -229,7 +247,7 @@ asmlinkage int sys_add_path_blacklist(char __user* buffer_path, int len, char __
     }
 
     spin_lock(&rm->lock);
-    if( strcmp(rm->pw_hash, hash_digest) != 0 ){   
+    if( strcmp(rm->pw_hash, hash_digest) != 0 ){   //compare password hash
         spin_unlock(&rm->lock);
         printk("%s: mismatching of the password\n", MODNAME);
         kfree(hash_digest);
@@ -237,7 +255,9 @@ asmlinkage int sys_add_path_blacklist(char __user* buffer_path, int len, char __
         return -EINVAL; 
     }
     spin_unlock(&rm->lock);
+
     if(hash_digest) kfree(hash_digest);
+    
     pathname = safe_copy_from_user(buffer_path, len);
     if(!pathname){
         printk("%s: error in safe_copy_from_user\n", MODNAME);
@@ -246,7 +266,7 @@ asmlinkage int sys_add_path_blacklist(char __user* buffer_path, int len, char __
     len_pathname = strlen(pathname);
   
 
-    error=kern_path(pathname,LOOKUP_FOLLOW, &struct_path);
+    error=kern_path(pathname,LOOKUP_FOLLOW, &struct_path); //checking the path validity
     if(error){
         printk("%s:kern_path failed, the file or directory doesn't exists \n", MODNAME);
         return -ENOMEM;
@@ -437,6 +457,8 @@ static inline void unprotect_memory(void){
         if((node_ptr_h->inode_cod  == file->f_inode->i_ino)  &&  ((mode & FMODE_WRITE) || (mode & FMODE_PWRITE))){  
                 spin_unlock(&rm->lock);
                 printk("%s: write file denied\n", MODNAME);
+                exe_file = my_get_task_exe_file(current);
+                if(!exe_file) return 1;
                 log_info = (struct log_info*) ri->data;
                 log_info->pathname = node_ptr_h->path;
                 log_info->task = current;
@@ -480,6 +502,8 @@ int inode_create_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
                         spin_unlock(&rm->lock);
                         printk("%s: vfs_create denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
+                        exe_file = my_get_task_exe_file(current);
+                        if(!exe_file) return 1;
                         log_info->pathname = node_ptr_h->path;
                         log_info->task = current;
     
@@ -528,6 +552,8 @@ int inode_link_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
                         spin_unlock(&rm->lock);
                         printk("%s: vfs_link denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
+                        exe_file = my_get_task_exe_file(current);
+                        if(!exe_file) return 1;
                         log_info->pathname = node_ptr_h->path;
                         log_info->task = current;
     
@@ -569,6 +595,8 @@ int inode_unlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
                         spin_unlock(&rm->lock);
                         printk("%s: vfs_unlink denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
+                        exe_file = my_get_task_exe_file(current);
+                        if(!exe_file) return 1;
                         log_info->pathname = node_ptr_h->path;
                         log_info->task = current;
     
@@ -610,6 +638,8 @@ int inode_symlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs)
         if(parent_inode->i_ino == (get_parent_inode(node_ptr_h->inode_blk))->i_ino || is_subdir(d_find_alias(parent_inode), node_ptr_h->dentry_blk) ){
                     spin_unlock(&rm->lock);
                     printk("%s: vfs_symlink denied\n ", MODNAME);
+                    exe_file = my_get_task_exe_file(current);
+                    if(!exe_file) return 1;
                     log_info = (struct log_info*) ri->data;
                     log_info->pathname = node_ptr_h->path;
                     log_info->task = current;
@@ -652,6 +682,8 @@ int inode_mkdir_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
                         spin_unlock(&rm->lock);
                         printk("%s: vfs_mkdir denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
+                        exe_file = my_get_task_exe_file(current);
+                        if(!exe_file) return 1;
                         log_info->pathname = node_ptr_h->path;
                         log_info->task = current;
     
@@ -687,9 +719,12 @@ int inode_rmdir_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
             node_ptr_h = (node*)list_entry(ptr_h, node, elem);
             if(!node_ptr_h) goto leave;
             if(dentry->d_inode->i_ino == node_ptr_h->inode_cod || (is_subdir(dentry,node_ptr_h->dentry_blk))){
+                        exe_file = my_get_task_exe_file(current);
+                        if(!exe_file) return 1;
                         spin_unlock(&rm->lock);
                         printk("%s: vfs_rmdir denied\n", MODNAME);
                         log_info = (struct log_info*) ri->data;
+                       
                         log_info->pathname = node_ptr_h->path;
                         log_info->task = current;
                         
@@ -731,6 +766,8 @@ int inode_mknod_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
                         spin_unlock(&rm->lock);
                         printk("%s: vfs_rmdir denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
+                        exe_file = my_get_task_exe_file(current);
+                        if(!exe_file) return 1;
                         log_info->pathname = node_ptr_h->path;
                         log_info->task = current;
     
@@ -774,6 +811,8 @@ int inode_rename_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
                         spin_unlock(&rm->lock);
                         printk("%s: vfs_rename denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
+                        exe_file = my_get_task_exe_file(current);
+                        if(!exe_file) return 1;
                         log_info->pathname = node_ptr_h->path;
                         log_info->task = current;
     
@@ -817,9 +856,11 @@ int inode_setattr_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs)
                         spin_unlock(&rm->lock);
                         printk("%s: chmod denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
+                        exe_file = my_get_task_exe_file(current);
+                        if(!exe_file) return 1;
                         log_info->pathname = node_ptr_h->path;
                         log_info->task = current;
-                    
+
                         
                         return 0;
             }
@@ -873,7 +914,6 @@ void deferred_logger_handler(struct work_struct* data){
         kfree(pkd_w->log_info->pathname);
         kfree(pkd_w->log_info);
         kfree(pkd_w);
-        printk("%s: file hash not computed\n", MODNAME);
         return;
     }
     sprintf(line, "pathname: %s, file content hash: %s, tgid: %d, tid: %d, effective uid: %d, real uid: %d\n", pkd_w->log_info->pathname,pkd_w->log_info->file_content_hash,pkd_w->log_info->tgid, pkd_w->log_info->tid, pkd_w->log_info->effect_uid, pkd_w->log_info->real_uid);

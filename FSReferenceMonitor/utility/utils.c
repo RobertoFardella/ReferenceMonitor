@@ -3,6 +3,7 @@
 #include <crypto/hash.h>
 #include "./../referenceMonitor.h"
 
+/*is used for compute password hash*/
 int calculate_crypto_hash(const char *content, int size_content, unsigned char* hash) 
 {
     struct crypto_shash *tfm;
@@ -33,7 +34,7 @@ int calculate_crypto_hash(const char *content, int size_content, unsigned char* 
 
     return ret;
 }
-
+/*Is used for compute file content hash*/
 char *file_content_fingerprint(struct task_struct* task) {
         struct crypto_shash *hash_tfm;
         struct file *file;
@@ -45,7 +46,6 @@ char *file_content_fingerprint(struct task_struct* task) {
 
         file = my_get_task_exe_file(task);
         if(!file){
-            printk("D\n" );
             return NULL;
         }
 
@@ -169,7 +169,6 @@ void logging_information(ref_mon* rm, struct log_info* log_info){
     const struct cred *cred;
     
     if(!log_info->pathname){
-        printk("dio\n");
         return;
     }
 
@@ -179,6 +178,7 @@ void logging_information(ref_mon* rm, struct log_info* log_info){
         printk("%s: memory allocation failed\n", MODNAME);
         return;
     }
+    /*Retrieve all necessary information to report it into the log file*/
     cred = current_cred();
 
     pkd_work->log_info->real_uid = cred->uid;
@@ -187,7 +187,9 @@ void logging_information(ref_mon* rm, struct log_info* log_info){
     pkd_work->log_info->tgid = current->tgid;
     pkd_work->log_info->pathname = kstrdup(log_info->pathname,GFP_ATOMIC);
     pkd_work->log_info->task = log_info->task;
-    INIT_WORK(&pkd_work->work, deferred_logger_handler);
+
+    //enqueue the work in the Workqueue
+    INIT_WORK(&pkd_work->work, deferred_logger_handler); 
     queue_work(rm->queue_work, &pkd_work->work);
     return;
 }
@@ -259,11 +261,10 @@ struct file* my_get_task_exe_file(struct task_struct *ctx)
         rcu_read_lock();
 
         exe_file = rcu_dereference(mm->exe_file);
-        if(exe_file && !get_file_rcu(exe_file))
-            exe_file = NULL;
 
         rcu_read_unlock();
     }
+    
     task_unlock(ctx);
 
     return exe_file;

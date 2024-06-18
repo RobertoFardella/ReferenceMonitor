@@ -9,7 +9,7 @@ int main(int argc, char** argv){
 
 	int syscall_index = 174;
     if (argc != 2) {
-		fprintf(stderr, "Usage: %s <path file>\n", argv[0]);
+		fprintf(stderr, "Usage: %s path=<path file>\n", argv[0]);
 		return 1;
 	}
 	printf("enter a password:");

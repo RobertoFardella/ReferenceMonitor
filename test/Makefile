@@ -9,6 +9,7 @@ init_blacklist:
 	sudo ./test/add_path_blacklist "/etc/passwd"
 	sudo ./test/add_path_blacklist "/home/ciao"
 	sudo ./test/add_path_blacklist "/etc/shadow"
+	sudo ./test/add_path_blacklist "/etc"
 
 add_path_blacklist:
 	gcc test/add_path_blacklist.c -o ./test/add_path_blacklist
@@ -19,47 +20,47 @@ rm_path_blacklist:
 
 print_blacklist:
 	gcc test/print_blacklist.c -o ./test/print_blacklist
-	sudo ./test/print_blacklist
+	./test/print_blacklist
 
 write_test:
 	gcc test/write_test.c -o ./test/write_test
-	sudo ./test/write_test $$path $$text
+	./test/write_test $$path $$text
 
 mkdir_test:
 	gcc test/mkdir_test.c -o ./test/mkdir_test
-	sudo ./test/mkdir_test $$path
+	./test/mkdir_test $$path
 
 mknod_test:
 	gcc test/mknod_test.c -o ./test/mknod_test
-	sudo ./test/mknod_test $$path
+	./test/mknod_test $$path
 
 setattr_test:
 	gcc test/setattr_test.c -o ./test/setattr_test
-	sudo ./test/setattr_test $$path
+	./test/setattr_test $$path
 
 rename_test:
 	gcc test/rename_test.c -o ./test/rename_test
-	sudo ./test/rename_test $$old_path $$new_path
+	./test/rename_test $$old_path $$new_path
 
 rmdir_test:
 	gcc test/rmdir_test.c -o ./test/rmdir_test
-	sudo ./test/rmdir_test $$path
+	./test/rmdir_test $$path
 
 symblink_test:
 	gcc test/symlink_test.c -o ./test/symlink_test
-	sudo ./test/symlink_test $$path $$sym_path
+	./test/symlink_test $$path $$sym_path
 
 unlink_test:
 	gcc test/unlink_test.c -o ./test/unlink_test
-	sudo ./test/unlink_test $$path
+	./test/unlink_test $$path
 
 link_test:
 	gcc test/link_test.c -o ./test/link_test
-	sudo ./test/link_test $$path $$hl_path
+	./test/link_test $$path $$hl_path
 
 create_test:
 	gcc test/create_test.c -o ./test/create_test
-	sudo ./test/create_test $$path
+	./test/create_test $$path
 
 clean:
 	rm -f ./test/write_test
