@@ -14,7 +14,6 @@ int main(int argc, char** argv){
 	}
 	printf("enter a password:");
 	scanf("%s", pw);
-	// Rimuovi il newline dalla fine della stringa
 	
 	pw_size = strlen(pw);
 	path_len = strlen(argv[1]);

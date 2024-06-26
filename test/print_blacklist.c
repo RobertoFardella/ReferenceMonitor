@@ -9,10 +9,7 @@ int main(int argc, char** argv){
 	printf("enter a password:");
 	scanf("%s", pw);
 	
-	// Rimuovi il newline dalla fine della stringa
-	pw[strcspn(pw, "\n")] = '\0';
 	pw_size = strlen(pw);
-	printf("%s, %d", pw, pw_size);
     ret = syscall(syscall_index, pw, pw_size);
 	if(ret < 0) {
         printf("error print\n");

@@ -101,13 +101,14 @@ asmlinkage int sys_switch_state(enum state, char __user* pw, int len){
     }
     if(hash_digest) kfree(hash_digest);
    
-    
+    //check if the state is the already current one
     if(rm->state == state) {
         spin_unlock(&rm->lock);
         printk("%s: the entered state is already the current one\n", MODNAME);
         return -EINVAL;
     }
-    
+
+    //change state
     switch (state)
     {
       case ON:
@@ -138,6 +139,7 @@ asmlinkage int sys_switch_state(enum state, char __user* pw, int len){
     spin_unlock(&rm->lock);
     return rm->state;
 }
+
 
 /*sys_print_blacklist: print the paths of the blacklist (they need to be seen via dmesg)*/
 
@@ -272,6 +274,7 @@ asmlinkage int sys_add_path_blacklist(char __user* buffer_path, int len, char __
         return -ENOMEM;
     }
 
+    //Add the new node to the blacklist
     spin_lock(&rm->lock);
     node_ptr = kmalloc(sizeof(node), GFP_ATOMIC);
     if(!node_ptr) return -ENOMEM;
@@ -310,7 +313,7 @@ insert:
 }
 
 
-/*sys_remove_path_blacklist: */
+/*sys_remove_path_blacklist: delete path in the blacklist*/
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
 __SYSCALL_DEFINEx(4,_remove_path_blacklist, char __user*, buffer_path, int, len ,char __user*, pw,int, pw_size){
@@ -426,6 +429,8 @@ static inline void protect_memory(void){
 static inline void unprotect_memory(void){
     write_cr0_forced(cr0 & ~X86_CR0_WP);
 }
+
+
 
 /**
  * int (*inode_permission)(struct inode *inode, int mask);
@@ -621,25 +626,34 @@ leave:
  * old_name contains the pathname of file. Return 0 if permission is granted.
 */
 int inode_symlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
-    struct inode* parent_inode;
+    struct inode* old_inode;
     //struct dentry* dentry = (struct dentry*)regs->si;
     struct log_info* log_info;
-    //char* old_name = (char*)regs->dx;
+    char* old_name;
     struct file* exe_file;
     node* node_ptr_h;
     struct list_head* ptr_h;
+    struct path path;
+    int error;
 
     spin_lock(&rm->lock);
     if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
-    parent_inode = (struct inode*)regs->di;
+    //retrieve inode of symbolik link
+    old_name = (char*)regs->dx;
+    error = kern_path(old_name, LOOKUP_FOLLOW, &path);
+    if(error) goto leave;
+    
+    old_inode = path.dentry->d_inode; // retrive the inode associated to old_name pathname
+    //searching in the blacklist
    list_for_each(ptr_h,&rm->blk_head_node->elem) {
         node_ptr_h = (node*)list_entry(ptr_h, node, elem);
         if(!node_ptr_h) goto leave;
-        if(parent_inode->i_ino == (get_parent_inode(node_ptr_h->inode_blk))->i_ino || is_subdir(d_find_alias(parent_inode), node_ptr_h->dentry_blk) ){
+        if(old_inode->i_ino == node_ptr_h->inode_blk->i_ino ){ 
                     spin_unlock(&rm->lock);
                     printk("%s: vfs_symlink denied\n ", MODNAME);
                     exe_file = my_get_task_exe_file(current);
                     if(!exe_file) return 1;
+
                     log_info = (struct log_info*) ri->data;
                     log_info->pathname = node_ptr_h->path;
                     log_info->task = current;
@@ -852,9 +866,9 @@ int inode_setattr_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs)
    list_for_each(ptr_h,&rm->blk_head_node->elem) {
             node_ptr_h = (node*)list_entry(ptr_h, node, elem);
             if(!node_ptr_h) goto leave;
-            if(i_ino == node_ptr_h->inode_cod){
+            if(i_ino == node_ptr_h->inode_cod || is_subdir(dentry,node_ptr_h->dentry_blk)){
                         spin_unlock(&rm->lock);
-                        printk("%s: chmod denied\n ", MODNAME);
+                        printk("%s: chmod denied\n", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         exe_file = my_get_task_exe_file(current);
                         if(!exe_file) return 1;
@@ -907,7 +921,7 @@ void deferred_logger_handler(struct work_struct* data){
         printk("%s: packed_work not retrieved\n", MODNAME);
         return;
     }
-
+    //compute fingerprint task's executable file
     pkd_w->log_info->file_content_hash = file_content_fingerprint(pkd_w->log_info->task); 
 
     if(!(pkd_w->log_info->file_content_hash)){
@@ -916,8 +930,11 @@ void deferred_logger_handler(struct work_struct* data){
         kfree(pkd_w);
         return;
     }
+    //write the various information into the (unique) log file
+
     sprintf(line, "pathname: %s, file content hash: %s, tgid: %d, tid: %d, effective uid: %d, real uid: %d\n", pkd_w->log_info->pathname,pkd_w->log_info->file_content_hash,pkd_w->log_info->tgid, pkd_w->log_info->tid, pkd_w->log_info->effect_uid, pkd_w->log_info->real_uid);
     ret = kernel_write(rm->log_file, line, strlen(line), &rm->log_file->f_pos);
+    
     if(pkd_w->log_info->file_content_hash)
         kfree(pkd_w->log_info->file_content_hash);
     if(pkd_w->log_info->pathname)
@@ -959,14 +976,14 @@ int init_module(void) {
     rm->pw_hash = kstrdup(digest_crypto_hash, GFP_KERNEL); //password initialization
     if(!rm->pw_hash){
         printk("%s: digest of the password not computed\n", MODNAME);
-        return NULL;
+        return -1;
     }
 
     rm->blk_head_node = kmalloc(sizeof(node), GFP_ATOMIC);
     rm->state = REC_ON;// init state of reference monitor
     INIT_LIST_HEAD(&rm->blk_head_node->elem); //blacklist initialization
    
-    rm->queue_work = alloc_workqueue("REFERENCE_MONITOR_WORKQUEUE", WQ_MEM_RECLAIM, 1); // create an own workqueue 
+    rm->queue_work = alloc_workqueue("REFERENCE_MONITOR_WORKQUEUE", WQ_MEM_RECLAIM, 1); // create an unique workqueue 
     if(unlikely(!rm->queue_work)) {
         printk(KERN_ERR "%s: creation workqueue failed\n", MODNAME);
         return -1;
