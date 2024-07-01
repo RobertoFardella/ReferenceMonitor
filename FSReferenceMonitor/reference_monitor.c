@@ -778,7 +778,7 @@ int inode_mknod_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
             if(!node_ptr_h) goto leave;
             if(inode->i_ino == node_ptr_h->inode_cod || (is_subdir(d_find_alias(inode),node_ptr_h->dentry_blk))){
                         spin_unlock(&rm->lock);
-                        printk("%s: vfs_rmdir denied\n ", MODNAME);
+                        printk("%s: vfs_mknod denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         exe_file = my_get_task_exe_file(current);
                         if(!exe_file) return 1;
@@ -980,7 +980,7 @@ int init_module(void) {
     }
 
     rm->blk_head_node = kmalloc(sizeof(node), GFP_ATOMIC);
-    rm->state = REC_ON;// init state of reference monitor
+    rm->state = OFF;// init state of reference monitor
     INIT_LIST_HEAD(&rm->blk_head_node->elem); //blacklist initialization
    
     rm->queue_work = alloc_workqueue("REFERENCE_MONITOR_WORKQUEUE", WQ_MEM_RECLAIM, 1); // create an unique workqueue 

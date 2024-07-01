@@ -28,11 +28,12 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     int block_to_read;//index of the block to be read from device
      
      if(IS_ERR(filp)){
-        printk("%s: file is null\n",MOD_NAME);
+        printk("%s: error in input file\n",MOD_NAME);
         return len;
      }
-     file_size = filp->f_inode->i_size;
+
      mutex_lock(&offset_mutex);
+     file_size = filp->f_inode->i_size;
     //check that *off is within boundaries
     if (*off >= file_size){
         mutex_unlock(&offset_mutex);
@@ -58,8 +59,9 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     ret = copy_to_user(buf,bh->b_data + offset, len);  
                                                        
     *off += (len - ret); //incremento di quanti byte effettivamente ho scritto sul file
-    mutex_unlock(&offset_mutex);
     brelse(bh);
+    mutex_unlock(&offset_mutex);
+    
     
     return len - ret;
 
@@ -149,7 +151,6 @@ ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
         return -EPERM;
 
     }
-
     
     if(start == 0)
         memcpy(bh->b_data + blk_offset, buffer_data , payload_size);
