@@ -16,7 +16,6 @@ unload-FS-driver:
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-	rm singlefilemakefs.o
 
 mount-fs: 
 	mount -o loop -t singlefilefs image ./mount
@@ -25,4 +24,4 @@ mount-fs:
 create-fs:
 	dd bs=4096 count=100 if=/dev/zero of=image
 	./singlefilemakefs image
-	#mkdir mount
+	mkdir mount
