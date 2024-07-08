@@ -470,7 +470,7 @@ static inline void unprotect_memory(void){
         if(!node_ptr_h) goto leave;
         if((node_ptr_h->inode_cod  == file->f_inode->i_ino)  &&  ((mode & FMODE_WRITE) || (mode & FMODE_PWRITE))){  
                 spin_unlock(&rm->lock);
-                printk("%s: write file denied\n", MODNAME);
+                //printk("%s: write file denied\n", MODNAME);
                 exe_file = my_get_task_exe_file(current);
                 if(!exe_file) return 1;
                 log_info = (struct log_info*) ri->data;
@@ -523,7 +523,7 @@ int inode_create_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
             if(!node_ptr_h) goto leave;
             if((parent_inode->i_ino == node_ptr_h->inode_cod)|| (is_subdir(parent_dentry,node_ptr_h->dentry_blk))){
                         spin_unlock(&rm->lock);
-                        printk("%s: vfs_create denied\n ", MODNAME);
+                        //printk("%s: vfs_create denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         exe_file = my_get_task_exe_file(current);
                         if(!exe_file) return 1;
@@ -581,7 +581,7 @@ int inode_link_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
             if(!node_ptr_h) goto leave;
             if(node_ptr_h->inode_cod == old_dentry->d_inode->i_ino || (is_subdir(parent_dentry,node_ptr_h->dentry_blk))){
                         spin_unlock(&rm->lock);
-                        printk("%s: vfs_link denied\n ", MODNAME);
+                        //printk("%s: vfs_link denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         exe_file = my_get_task_exe_file(current);
                         if(!exe_file) return 1;
@@ -633,7 +633,7 @@ int inode_unlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
             
             if((dentry->d_inode->i_ino == node_ptr_h->inode_cod) || (is_subdir(parent_dentry,node_ptr_h->dentry_blk))){
                         spin_unlock(&rm->lock);
-                        printk("%s: vfs_unlink denied\n ", MODNAME);
+                        //printk("%s: vfs_unlink denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         exe_file = my_get_task_exe_file(current);
                         if(!exe_file) return 1;
@@ -693,7 +693,7 @@ int inode_symlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs)
         if(!node_ptr_h) goto leave;
         if(old_inode->i_ino == node_ptr_h->inode_blk->i_ino ){ 
                     spin_unlock(&rm->lock);
-                    printk("%s: vfs_symlink denied\n ", MODNAME);
+                    //printk("%s: vfs_symlink denied\n ", MODNAME);
                     exe_file = my_get_task_exe_file(current);
                     if(!exe_file) return 1;
 
@@ -744,7 +744,7 @@ int inode_mkdir_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
             if(!node_ptr_h) goto leave;
             if((parent_dentry->d_inode->i_ino == (get_parent_inode(node_ptr_h->inode_blk))->i_ino) || (is_subdir(parent_dentry,node_ptr_h->dentry_blk))){
                         spin_unlock(&rm->lock);
-                        printk("%s: vfs_mkdir denied\n ", MODNAME);
+                        //printk("%s: vfs_mkdir denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         exe_file = my_get_task_exe_file(current);
                         if(!exe_file) return 1;
@@ -793,7 +793,7 @@ int inode_rmdir_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
                         exe_file = my_get_task_exe_file(current);
                         if(!exe_file) return 1;
                         spin_unlock(&rm->lock);
-                        printk("%s: vfs_rmdir denied\n", MODNAME);
+                        //printk("%s: vfs_rmdir denied\n", MODNAME);
                         log_info = (struct log_info*) ri->data;
                        
                         log_info->pathname = node_ptr_h->path;
@@ -842,7 +842,7 @@ int inode_mknod_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
             if(!node_ptr_h) goto leave;
             if(inode->i_ino == node_ptr_h->inode_cod || (is_subdir(d_find_alias(inode),node_ptr_h->dentry_blk))){
                         spin_unlock(&rm->lock);
-                        printk("%s: vfs_mknod denied\n ", MODNAME);
+                        //printk("%s: vfs_mknod denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         exe_file = my_get_task_exe_file(current);
                         if(!exe_file) return 1;
@@ -894,7 +894,7 @@ int inode_rename_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
             if(!node_ptr_h) goto leave;
             if(old_inode->i_ino == node_ptr_h->inode_cod){
                         spin_unlock(&rm->lock);
-                        printk("%s: vfs_rename denied\n ", MODNAME);
+                        //printk("%s: vfs_rename denied\n ", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         exe_file = my_get_task_exe_file(current);
                         if(!exe_file) return 1;
@@ -946,7 +946,7 @@ int inode_setattr_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs)
             if(!node_ptr_h) goto leave;
             if(i_ino == node_ptr_h->inode_cod || is_subdir(dentry,node_ptr_h->dentry_blk)){
                         spin_unlock(&rm->lock);
-                        printk("%s: chmod denied\n", MODNAME);
+                        //printk("%s: chmod denied\n", MODNAME);
                         log_info = (struct log_info*) ri->data;
                         exe_file = my_get_task_exe_file(current);
                         if(!exe_file) return 1;
