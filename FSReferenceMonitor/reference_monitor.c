@@ -18,9 +18,15 @@ const char* security_inode_mknod_hook_name = "security_inode_mknod";
 const char* security_inode_mkdir_hook_name = "security_inode_mkdir" ;
 const char* security_inode_rename_hook_name = "security_inode_rename";
 
-unsigned long *nisyscall;
-unsigned long cr0;
+unsigned long systemcall_table=0x0;
+module_param(systemcall_table,ulong,0660);
+unsigned long nisyscall;
 ref_mon *rm;
+
+unsigned long new_sys_call_array[] = {0x0, 0x0, 0x0, 0x0};                      /* new syscalls addresses array */
+#define HACKED_ENTRIES (int)(sizeof(new_sys_call_array)/sizeof(unsigned long))       /* number of entries to be hacked */
+int restore[HACKED_ENTRIES] = {[0 ... (HACKED_ENTRIES-1)] -1};                       /* array of free entries on the syscall table */
+
 
 /* The_hook function is the exit handler shared among all the kretprobes.
 It blocks any attempt to write access and performs deferred work to write 
@@ -407,30 +413,11 @@ unsigned long sys_remove_path_blacklist = (unsigned long) __x64_sys_remove_path_
 unsigned long sys_print_blacklist = (unsigned long) __x64_sys_print_blacklist;   
 #endif
 
-unsigned long systemcall_table=0x0;
-module_param(systemcall_table,ulong,0660);
+
 char *password=NULL;
 module_param(password, charp, 0444); // 0444 imposta i permessi di sola lettura (ro)
-int free_entries[15];
-module_param_array(free_entries,int,NULL,0660);
-
-static inline void write_cr0_forced(unsigned long val){
-    unsigned long __force_order;
-
-    /* __asm__ __volatile__( */
-    asm volatile(
-        "mov %0, %%cr0"
-        : "+r"(val), "+m"(__force_order));
-}
-
-static inline void protect_memory(void){
-    write_cr0_forced(cr0);
-}
-
-static inline void unprotect_memory(void){
-    write_cr0_forced(cr0 & ~X86_CR0_WP);
-}
-
+//int free_entries[15];
+//module_param_array(free_entries,int,NULL,0660);
 
 
 /**
@@ -1027,9 +1014,48 @@ void deferred_logger_handler(struct work_struct* data){
     return;
 }
 
+/**
+ * @brief This function adds the new syscalls to the syscall table's free entries
+*/
+int initialize_syscalls(void) {
+        int i;
+        int ret;
+        if (systemcall_table == 0x0){
+           printk("%s: cannot manage sys_call_table address set to 0x0\n",MODNAME);
+           return -1;
+        }
+
+        new_sys_call_array[0] = (unsigned long)sys_switch_state;
+        new_sys_call_array[1] = (unsigned long)sys_add_path_blacklist;
+        new_sys_call_array[2] = (unsigned long)sys_remove_path_blacklist;
+        new_sys_call_array[3] = (unsigned long)sys_print_blacklist;
+
+        /* get free entries on the syscall table */
+        ret = get_entries(restore,HACKED_ENTRIES,(unsigned long*)systemcall_table,&nisyscall);
+        printk("%s: ret %d hc %d\n", MODNAME, ret, HACKED_ENTRIES);
+        printk("%s: ennamocoddio\n", MODNAME);
+        
+        if (ret != HACKED_ENTRIES){
+                printk("%s: could not hack %d entries (just %d)\n",MODNAME,HACKED_ENTRIES,ret); 
+                return -1;      
+        }
+    printk("%s: ennamocoddio\n", MODNAME);
+	unprotect_memory();
+        
+        /* the free entries will point to the new syscalls */
+        for(i=0;i<HACKED_ENTRIES;i++){
+                ((unsigned long *)systemcall_table)[restore[i]] = (unsigned long)new_sys_call_array[i];
+        }
+
+	protect_memory();
+
+        return 0;
+}
+
 int init_module(void) {
     unsigned long ** sys_call_table;
     char* digest_crypto_hash;
+    int ret;
    
     /* initializing struct ref_mon rm */
     rm =  kmalloc(sizeof(ref_mon), GFP_KERNEL); //alloc memory in kernel space
@@ -1090,16 +1116,20 @@ int init_module(void) {
     set_kretprobe(&security_inode_rename_probe);
     set_kretprobe(&security_inode_setattr_probe);
 
+    /* syscall table update (add new syscalls) */
+        ret = initialize_syscalls();
+        if (ret != 0) {
+                return ret;
+        }
+
     /*installing system calls*/
     if(systemcall_table!=0){
-        cr0 = read_cr0();
         unprotect_memory();
         sys_call_table = (void*) systemcall_table; 
-        nisyscall = sys_call_table[free_entries[0]]; //mi serve poi nel cleanup
-        sys_call_table[free_entries[0]] = (unsigned long*)sys_switch_state;
-        sys_call_table[free_entries[1]] = (unsigned long*)sys_add_path_blacklist;
-        sys_call_table[free_entries[2]] = (unsigned long*)sys_remove_path_blacklist;
-        sys_call_table[free_entries[3]] = (unsigned long*)sys_print_blacklist;
+        sys_call_table[restore[0]] = (unsigned long*)sys_switch_state;
+        sys_call_table[restore[1]] = (unsigned long*)sys_add_path_blacklist;
+        sys_call_table[restore[2]] = (unsigned long*)sys_remove_path_blacklist;
+        sys_call_table[restore[3]] = (unsigned long*)sys_print_blacklist;
         protect_memory();
     }else{
         printk("%s: system call table not avalaible\n", MODNAME);
@@ -1118,13 +1148,12 @@ void cleanup_module(void) {
     struct list_head* tmp;
     node* node_ptr;
     /*restore system call table*/
-    cr0 = read_cr0();
     unprotect_memory();
     sys_call_table = (void*) systemcall_table; 
-    sys_call_table[free_entries[0]] = nisyscall;
-    sys_call_table[free_entries[1]] = nisyscall;
-    sys_call_table[free_entries[2]] = nisyscall;
-    sys_call_table[free_entries[3]] = nisyscall;
+    sys_call_table[restore[0]] = nisyscall;
+    sys_call_table[restore[1]] = nisyscall;
+    sys_call_table[restore[2]] = nisyscall;
+    sys_call_table[restore[3]] = nisyscall;
     protect_memory();   
    
     /* unregistering kretprobes*/

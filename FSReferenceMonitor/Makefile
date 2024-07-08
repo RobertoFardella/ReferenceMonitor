@@ -1,5 +1,5 @@
 obj-m += reference_monitor_main.o
-reference_monitor_main-objs += reference_monitor.o ./utility/utils.o
+reference_monitor_main-objs += reference_monitor.o lib/scth.o ./utility/utils.o
 
 A:= $(shell cat /sys/module/the_usctm/parameters/sys_call_table_address)
 array_free_entries:= $(shell cat /sys/module/the_usctm/parameters/free_entries) 
@@ -15,4 +15,4 @@ insmod:
 	@echo "$(A)"
 	@echo "$(array_free_entries)"
 	@read -p "Select a password: " password; \
-	insmod reference_monitor_main.ko password="$$password" systemcall_table=$(A) free_entries=$(array_free_entries)
+	insmod reference_monitor_main.ko password="$$password" systemcall_table=$(A) 
