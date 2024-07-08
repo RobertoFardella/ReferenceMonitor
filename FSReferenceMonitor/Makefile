@@ -1,17 +1,18 @@
-obj-m := reference_monitor_main.o
-reference_monitor_main-objs := reference_monitor.o ./utility/utils.o
+obj-m += reference_monitor_main.o
+reference_monitor_main-objs += reference_monitor.o ./utility/utils.o
 
-A := $(shell cat /sys/module/the_usctm/parameters/sys_call_table_address)
-array_free_entries := $(shell cat /sys/module/the_usctm/parameters/free_entries) 
+A:= $(shell cat /sys/module/the_usctm/parameters/sys_call_table_address)
+array_free_entries:= $(shell cat /sys/module/the_usctm/parameters/free_entries) 
+
+EXTRA_CFLAGS := -I$(PWD)/include -w
+
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-remote-build:
-	 make -C /lib/modules/$(shell uname -r)/build M=$(PWD)/FSReferenceMonitor modules
-remote-insmod:
-	 sudo insmod FSReferenceMonitor/reference_monitor_main.ko systemcall_table=$(A) free_entries=$(array_free_entries) password=$$PW
-remote-clean:
-	 make -C /lib/modules/$(shell uname -r)/build M=$(PWD)/FSReferenceMonitor clean
-remote-rmmod:
-	sudo rmmod reference_monitor_main.ko 
+
+insmod:
+	@echo "$(A)"
+	@echo "$(array_free_entries)"
+	@read -p "Select a password: " password; \
+	insmod reference_monitor_main.ko password="$$password" systemcall_table=$(A) free_entries=$(array_free_entries)

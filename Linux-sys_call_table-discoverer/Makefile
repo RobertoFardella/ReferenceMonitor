@@ -7,13 +7,5 @@ all:
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
 
-remote-build:
-	 make -C /lib/modules/$(shell uname -r)/build M=$(PWD)/Linux-sys_call_table-discoverer modules
-
-remote-insmod:
-	 sudo insmod Linux-sys_call_table-discoverer/the_usctm.ko
-
-remote-clean:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD)/Linux-sys_call_table-discoverer  clean
-remote-rmmod:
-	sudo rmmod the_usctm.ko
+insmod:
+	insmod the_usctm.ko

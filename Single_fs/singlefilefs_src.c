@@ -11,6 +11,9 @@
 
 #include "singlefilefs.h"
 
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Roberto Fardella <roberto.fard@gmail.com>");
+MODULE_DESCRIPTION("SINGLE-FILE-FS");
 
 static struct super_operations singlefilefs_super_ops = {
 };
@@ -133,7 +136,7 @@ static int singlefilefs_init(void) {
 static void singlefilefs_exit(void) {
 
     int ret;
-        
+    
     //unregister filesystem
     ret = unregister_filesystem(&onefilefs_type);
 
@@ -146,6 +149,3 @@ static void singlefilefs_exit(void) {
 module_init(singlefilefs_init);
 module_exit(singlefilefs_exit);
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Roberto Fardella <roberto.fard@gmail.com>");
-MODULE_DESCRIPTION("SINGLE-FILE-FS");

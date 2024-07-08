@@ -1,46 +1,42 @@
+MAKE = make -C
+
 all:
-	if [ -z "$$PW" ]; then echo "Please set the PW variable"; exit 1; fi
-	@echo "the password is $(PW)" 
-	make  -f Single_fs/Makefile remote-all						    ###module build			
-	make  -f Linux-sys_call_table-discoverer/Makefile remote-build
-	make  -f FSReferenceMonitor/Makefile remote-build
-	make  -f Single_fs/Makefile ex-create-fs 							###filesystem setup
-	sudo make -f Single_fs/Makefile ex-mount-fs
-	sudo make -f Linux-sys_call_table-discoverer/Makefile remote-insmod ###module insmod
-	sudo make -e PW=$(PW) -f FSReferenceMonitor/Makefile remote-insmod 
-	
+	$(MAKE) /lib/modules/$(shell uname -r)/build M=$(PWD)/Linux-sys_call_table-discoverer modules
+	$(MAKE) /lib/modules/$(shell uname -r)/build M=$(PWD)/FSReferenceMonitor modules
+	$(MAKE) /lib/modules/$(shell uname -r)/build M=$(PWD)/Single_fs modules
 clean:
-	make -f FSReferenceMonitor/Makefile remote-clean
-	make -f Linux-sys_call_table-discoverer/Makefile remote-clean
-	make -f Single_fs/Makefile remote-clean
-	make -f test/Makefile clean
-	
-insmod:
-	make -f Single_fs/Makefile remote-insmod
-	sudo make -f Linux-sys_call_table-discoverer/Makefile remote-insmod
-	sudo make -f FSReferenceMonitor/Makefile remote-insmod
-rmmod:
-	sudo make -f Linux-sys_call_table-discoverer/Makefile remote-rmmod
-	sudo make -f FSReferenceMonitor/Makefile remote-rmmod
-	make -f Single_fs/Makefile remote-destroy-fs
-	make -f Single_fs/Makefile remote-rmmod
+	$(MAKE) Linux-sys_call_table-discoverer/ clean
+	$(MAKE) FSReferenceMonitor/ clean
+	$(MAKE) commands/ clean
+	$(MAKE) Single_fs/ clean
+mount:
+	$(MAKE) Single_fs/ load-FS-driver
+	$(MAKE) Single_fs/ create-fs
+	$(MAKE) Single_fs/ mount-fs
+	$(MAKE) Linux-sys_call_table-discoverer/ insmod
+	$(MAKE) FSReferenceMonitor/ insmod
+
+unmount:
+	rmmod the_usctm
+	rmmod reference_monitor_main
+	rmmod singlefilefs
 	
 #command to run the test cases
 
 init_blacklist: 
-	sudo make -f test/Makefile init_blacklist
+	make -f test/Makefile init_blacklist
 	
 switch_state:
-	sudo make -f test/Makefile switch_state
+	make -f test/Makefile switch_state
 
 add_path_blacklist:
-	sudo make -e path=$(path) -f test/Makefile add_path_blacklist
+	make -e path=$(path) -f test/Makefile add_path_blacklist
 
 rm_path_blacklist:	
-	sudo make  -e path=$(path) -f test/Makefile rm_path_blacklist
+	make  -e path=$(path) -f test/Makefile rm_path_blacklist
 
 print_blacklist:
-	sudo make -f test/Makefile print_blacklist
+	make -f test/Makefile print_blacklist
 
 write_test:
 	make -e path=$(path) text=$(text) -f test/Makefile write_test
@@ -71,12 +67,3 @@ link_test:
 
 create_test:
 	make -e path=$(path) -f test/Makefile create_test
-
-# filesystem commands
-
-filesystem-setup:
-	make -f Single_fs/Makefile ex-create-fs
-	sudo make -f Single_fs/Makefile ex-mount-fs
-
-filesystem-destroy:
-	umount ./mount

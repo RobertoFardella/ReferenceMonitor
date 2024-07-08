@@ -45,9 +45,7 @@ struct log_info {
     pid_t tid;
     pid_t tgid;
     char* pathname;
-    struct dentry* exe_dentry;
     struct task_struct* task;
-    struct file *fp_executable;
     char* file_content_hash;
 };
 
@@ -64,6 +62,7 @@ typedef struct referenceMonitor
     struct workqueue_struct *queue_work;
 	char* pw_hash; //hash of password
 	spinlock_t lock; //accessing in concurrently manner in blacklist list_head structure
+    spinlock_t state_lock; 
      
 }ref_mon;
 

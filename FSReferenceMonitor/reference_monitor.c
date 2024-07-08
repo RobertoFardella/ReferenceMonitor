@@ -99,15 +99,16 @@ asmlinkage int sys_switch_state(enum state, char __user* pw, int len){
         printk("%s: mismatching of the password\n", MODNAME);
         return -EINVAL; 
     }
+    spin_unlock(&rm->lock);
     if(hash_digest) kfree(hash_digest);
-   
+    
+    spin_lock(&rm->state_lock);
     //check if the state is the already current one
     if(rm->state == state) {
-        spin_unlock(&rm->lock);
+        spin_unlock(&rm->state_lock);
         printk("%s: the entered state is already the current one\n", MODNAME);
         return -EINVAL;
     }
-
     //change state
     switch (state)
     {
@@ -133,10 +134,10 @@ asmlinkage int sys_switch_state(enum state, char __user* pw, int len){
 
     default:
         printk("%s:The inserted state is not valid\n", MODNAME);
-        spin_unlock(&rm->lock);
+        spin_unlock(&rm->state_lock);
         return -EINVAL;
     }
-    spin_unlock(&rm->lock);
+    spin_unlock(&rm->state_lock);
     return rm->state;
 }
 
@@ -224,13 +225,13 @@ asmlinkage int sys_add_path_blacklist(char __user* buffer_path, int len, char __
         return -EPERM; 
     }
     //check state of the reference monitor
-    spin_lock(&rm->lock);
+    spin_lock(&rm->state_lock);
     if(rm->state == OFF || rm->state == ON){
-        spin_unlock(&rm->lock);
+        spin_unlock(&rm->state_lock);
         printk("%s: Switch to REC-ON or REC-OFF state in order to perform the insert/delete path activity\n", MODNAME);
         return -EINVAL;    
     }
-    spin_unlock(&rm->lock);
+    spin_unlock(&rm->state_lock);
 
     //check input syscall
     if(!pw || !buffer_path) return -EINVAL;
@@ -334,13 +335,13 @@ asmlinkage int sys_remove_path_blacklist(char __user* buffer_path, int len, char
         printk("%s: Only EUID 0 (root) can perform the insert/delete path activity\n", MODNAME);
         return -EPERM; 
     }
-    spin_lock(&rm->lock);
+    spin_lock(&rm->state_lock);
     if(rm->state == OFF || rm->state == ON){
-        spin_unlock(&rm->lock);
+        spin_unlock(&rm->state_lock);
         printk("%s: Switch to REC-ON or REC-OFF state in order to perform the insert/delete path activity\n", MODNAME);
         return -EINVAL;    
     }
-    spin_unlock(&rm->lock);
+    spin_unlock(&rm->state_lock);
 
     pw_buffer = safe_copy_from_user(pw, pw_size);
     if(!pw_buffer){
@@ -450,10 +451,18 @@ static inline void unprotect_memory(void){
     struct list_head* ptr_h;
     struct file* exe_file;
     fmode_t mode;
-    
+
+     spin_lock(&rm->state_lock);
+    if(((rm->state == REC_OFF || rm->state == OFF ))){
+        spin_unlock(&rm->state_lock);
+        return 1;
+    }
+    spin_unlock(&rm->state_lock);
     
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem)){
+        goto leave;
+    }
     file = (struct file*)regs->di;
     mode = file->f_mode;
    list_for_each(ptr_h,&rm->blk_head_node->elem) {
@@ -471,8 +480,8 @@ static inline void unprotect_memory(void){
         }
     }
 leave:
-    spin_unlock(&rm->lock);
-    return 1; 
+    spin_unlock(&rm->lock);  
+    return 1;     
  }
 
 /* int security_inode_create(struct inode *dir, struct dentry *dentry, umode_t mode)
@@ -496,8 +505,17 @@ int inode_create_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     struct file* exe_file;
     struct log_info* log_info;
 
+    spin_lock(&rm->state_lock);
+    if(((rm->state == REC_OFF || rm->state == OFF ))){
+        spin_unlock(&rm->state_lock);
+        return 1;
+    }
+    spin_unlock(&rm->state_lock);
+    
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem)){
+        goto leave;
+    }
     parent_inode = (struct inode*)regs->di;
     parent_dentry = d_find_alias(parent_inode);
    list_for_each(ptr_h,&rm->blk_head_node->elem) {
@@ -516,7 +534,7 @@ int inode_create_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
             }
     }
 leave:
-    spin_unlock(&rm->lock);
+    spin_unlock(&rm->lock);  
     return 1; 
 }
 
@@ -542,9 +560,17 @@ int inode_link_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     struct log_info* log_info;
     struct file* exe_file;
 
-
+    spin_lock(&rm->state_lock);
+    if(((rm->state == REC_OFF || rm->state == OFF ))){
+        spin_unlock(&rm->state_lock);
+        return 1;
+    }
+    spin_unlock(&rm->state_lock);
+    
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem)){
+        goto leave;
+    }
 
     parent_inode = (struct inode* )regs->si;
     old_dentry = (struct dentry* )regs->di;
@@ -566,8 +592,8 @@ int inode_link_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
             }
         }
 leave:
-    spin_unlock(&rm->lock);
-    return 1;
+    spin_unlock(&rm->lock);  
+    return 1; 
 }
 /*int security_inode_unlink(struct inode *dir, struct dentry *dentry) 
  * called in vfs_unlink - unlink a filesystem object
@@ -588,8 +614,17 @@ int inode_unlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
         struct file* exe_file;
         struct dentry* parent_dentry;
 
+        spin_lock(&rm->state_lock);
+        if(((rm->state == REC_OFF || rm->state == OFF ))){
+            spin_unlock(&rm->state_lock);
+            return 1;
+        }
+        spin_unlock(&rm->state_lock);
+        
         spin_lock(&rm->lock);
-        if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+        if(list_empty(&rm->blk_head_node->elem)){
+            goto leave;
+        }
         parent_inode = (struct inode* )regs->di;
         dentry = (struct dentry*) regs->si;
         parent_dentry = d_find_alias(parent_inode); //dentry structure for an existing link to the file
@@ -608,10 +643,9 @@ int inode_unlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
                         return 0;
             }
         }
-
 leave:
-    spin_unlock(&rm->lock);
-    return 1;
+    spin_unlock(&rm->lock);  
+    return 1;         
 }
 /* int security_inode_symlink(struct inode *dir, struct dentry *dentry, const char *old_name)
 
@@ -636,8 +670,17 @@ int inode_symlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs)
     struct path path;
     int error;
 
+    spin_lock(&rm->state_lock);
+    if(((rm->state == REC_OFF || rm->state == OFF ))){
+        spin_unlock(&rm->state_lock);
+        return 1;
+    }
+    spin_unlock(&rm->state_lock);
+    
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem)){
+        goto leave;
+    }
     //retrieve inode of symbolik link
     old_name = (char*)regs->dx;
     error = kern_path(old_name, LOOKUP_FOLLOW, &path);
@@ -662,8 +705,8 @@ int inode_symlink_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs)
         }
     }
 leave:
-    spin_unlock(&rm->lock);
-    return 1;
+    spin_unlock(&rm->lock);  
+    return 1;    
 }
 /* int security_inode_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode) */
 /**
@@ -685,8 +728,15 @@ int inode_mkdir_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     struct dentry* parent_dentry;
     struct file* exe_file;
 
+    spin_lock(&rm->state_lock);
+    if(((rm->state == REC_OFF || rm->state == OFF ))){
+        spin_unlock(&rm->state_lock);
+        return 1;
+    }
+    spin_unlock(&rm->state_lock);
+
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem)) goto leave;
     parent_inode = (struct inode*)regs->di;
     parent_dentry = d_find_alias(parent_inode);
    list_for_each(ptr_h,&rm->blk_head_node->elem) { 
@@ -726,8 +776,15 @@ int inode_rmdir_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     node* node_ptr_h;
     struct list_head* ptr_h;
 
+    spin_lock(&rm->state_lock);
+    if(((rm->state == REC_OFF || rm->state == OFF ))){
+        spin_unlock(&rm->state_lock);
+        return 1;
+    }
+    spin_unlock(&rm->state_lock);
+
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem)) goto leave;
     dentry = (struct dentry*)regs->si;
    list_for_each(ptr_h,&rm->blk_head_node->elem) {
             node_ptr_h = (node*)list_entry(ptr_h, node, elem);
@@ -770,8 +827,15 @@ int inode_mknod_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     struct file* exe_file;
     struct list_head* ptr_h;
 
+    spin_lock(&rm->state_lock);
+    if(((rm->state == REC_OFF || rm->state == OFF ))){
+        spin_unlock(&rm->state_lock);
+        return 1;
+    }
+    spin_unlock(&rm->state_lock);
+
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem)) goto leave;
     inode = (struct inode*)regs->di;
    list_for_each(ptr_h,&rm->blk_head_node->elem) {
             node_ptr_h = (node*)list_entry(ptr_h, node, elem);
@@ -811,9 +875,16 @@ int inode_rename_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs){
     node* node_ptr_h;
     struct list_head* ptr_h;
     struct file* exe_file;
+    
+    spin_lock(&rm->state_lock);
+    if(((rm->state == REC_OFF || rm->state == OFF ))){
+        spin_unlock(&rm->state_lock);
+        return 1;
+    }
+    spin_unlock(&rm->state_lock);
 
     spin_lock(&rm->lock);
-    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem)) goto leave;
 
     old_dentry = (struct dentry*)regs->si;
     old_inode = old_dentry->d_inode;
@@ -858,9 +929,16 @@ int inode_setattr_pre_hook(struct kretprobe_instance  *ri, struct pt_regs *regs)
     struct file* exe_file;
     unsigned long i_ino;
 
+
+    spin_lock(&rm->state_lock);
+    if(((rm->state == REC_OFF || rm->state == OFF ))){
+        spin_unlock(&rm->state_lock);
+        return 1;
+    }
+    spin_unlock(&rm->state_lock);
+
     spin_lock(&rm->lock);
-    
-    if(list_empty(&rm->blk_head_node->elem) || ((rm->state == REC_OFF || rm->state == OFF ))) goto leave;
+    if(list_empty(&rm->blk_head_node->elem)) goto leave;
     dentry = (struct dentry*)regs->di;
     i_ino = dentry->d_inode->i_ino;
    list_for_each(ptr_h,&rm->blk_head_node->elem) {
@@ -961,7 +1039,7 @@ int init_module(void) {
         return -ENOMEM;
     }
 
-    rm->log_file = filp_open("./Single_fs/mount/the-file", O_RDWR, 0);
+    rm->log_file = filp_open("./../Single_fs/mount/the-file", O_RDWR, 0);
 	if (IS_ERR(rm->log_file)) {
         printk(KERN_ERR "%s: Failed to open log-file\n", MODNAME);
         return PTR_ERR(rm->log_file);
