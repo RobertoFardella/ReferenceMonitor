@@ -1029,45 +1029,6 @@ void deferred_logger_handler(struct work_struct* data){
     return;
 }
 
-<<<<<<< HEAD
-/**
- * @brief This function adds the new syscalls to the syscall table's free entries
-*/
-int initialize_syscalls(void) {
-        int i;
-        int ret;
-        if (systemcall_table == 0x0){
-           printk("%s: cannot manage sys_call_table address set to 0x0\n",MODNAME);
-           return -1;
-        }
-
-        new_sys_call_array[0] = (unsigned long)sys_switch_state;
-        new_sys_call_array[1] = (unsigned long)sys_add_path_blacklist;
-        new_sys_call_array[2] = (unsigned long)sys_remove_path_blacklist;
-        new_sys_call_array[3] = (unsigned long)sys_print_blacklist;
-
-        /* get free entries on the syscall table */
-        ret = get_entries(restore,HACKED_ENTRIES,(unsigned long*)systemcall_table,&nisyscall);
-     
-        if (ret != HACKED_ENTRIES){
-                printk("%s: could not hack %d entries (just %d)\n",MODNAME,HACKED_ENTRIES,ret); 
-                return -1;      
-        }
-
-	unprotect_memory();
-        
-        /* the free entries will point to the new syscalls */
-        for(i=0;i<HACKED_ENTRIES;i++){
-                ((unsigned long *)systemcall_table)[restore[i]] = (unsigned long)new_sys_call_array[i];
-        }
-
-	protect_memory();
-
-        return 0;
-}
-
-=======
->>>>>>> parent of 6ba6300 (free_entries retrieved from reference module kernel)
 int init_module(void) {
     unsigned long ** sys_call_table;
     char* digest_crypto_hash;

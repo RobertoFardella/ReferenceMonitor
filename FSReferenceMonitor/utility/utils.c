@@ -165,7 +165,7 @@ node* lookup_inode_node_blacklist(struct inode* inode, struct list_head* head){
 }
 
 void logging_information(ref_mon* rm, struct log_info* log_info){
-    packed_work * pkd_work;
+    static packed_work * pkd_work;
     const struct cred *cred;
     
     if(!log_info->pathname){
