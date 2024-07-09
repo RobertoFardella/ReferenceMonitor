@@ -120,6 +120,7 @@ ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
 
         bdev = bh->b_bdev;  /* device where block resides */
         if (bdev->bd_read_only){
+            brelse(bh);
             mutex_unlock(&offset_mutex);
             kfree(buffer_data);
             return -EPERM;
@@ -146,6 +147,7 @@ ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
 
     bdev = bh->b_bdev;  /* device where block resides */
     if (bdev->bd_read_only){
+        brelse(bh);
         mutex_unlock(&offset_mutex);
 		kfree(buffer_data);
         return -EPERM;

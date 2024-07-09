@@ -111,10 +111,10 @@ int get_entries(int * entry_ids, int num_acquires, unsigned long sys_call_table,
         for (i=0; i<256; i++){
 		for(z=i+1; z<256; z++){
 			if(p[i] == p[z]){
-				AUDIT{
+				/*AUDIT{
                         		printk("%s: table entries %d and %d keep the same address\n",LIBNAME,i,z);
                         		printk("%s: sys_ni_syscall correctly located at %px\n",LIBNAME,(void*)p[i]);
-				}
+				}*/
 				addr = p[i];
                         	if(j < (num_acquires-1)){
 				       	restore[++j] = i;
@@ -145,12 +145,8 @@ int get_entries(int * entry_ids, int num_acquires, unsigned long sys_call_table,
 
 	return -1;
 
-found_available_entries:
-        printk("%s: ret is %d\n",LIBNAME,ret);
-		
-		printk("%p %p\n", entry_ids, restore);
+found_available_entries:		
 	memcpy((char*)entry_ids,(char*)restore,ret*sizeof(int));
-	
 	*sys_ni_sys_call = addr;
 
 	return ret;

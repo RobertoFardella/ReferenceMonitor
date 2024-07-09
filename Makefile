@@ -19,6 +19,7 @@ mount:
 unmount:
 	rmmod the_usctm
 	rmmod reference_monitor_main
+	$(MAKE) Single_fs/ umount-fs
 	rmmod singlefilefs
 	
 #command to run the test cases

@@ -986,15 +986,17 @@ void deferred_logger_handler(struct work_struct* data){
         printk("%s: packed_work not retrieved\n", MODNAME);
         return;
     }
-    //compute fingerprint task's executable file
-    pkd_w->log_info->file_content_hash = file_content_fingerprint(pkd_w->log_info->task); 
-
-    if(!(pkd_w->log_info->file_content_hash)){
+    
+    if(!pkd_w->log_info->task){
         kfree(pkd_w->log_info->pathname);
         kfree(pkd_w->log_info);
         kfree(pkd_w);
         return;
     }
+    //compute fingerprint task's executable file
+    pkd_w->log_info->file_content_hash = file_content_fingerprint(pkd_w->log_info->task); 
+
+    
     //write the various information into the (unique) log file
 
     sprintf(line, "pathname: %s, file content hash: %s, tgid: %d, tid: %d, effective uid: %d, real uid: %d\n", pkd_w->log_info->pathname,pkd_w->log_info->file_content_hash,pkd_w->log_info->tgid, pkd_w->log_info->tid, pkd_w->log_info->effect_uid, pkd_w->log_info->real_uid);
@@ -1032,14 +1034,12 @@ int initialize_syscalls(void) {
 
         /* get free entries on the syscall table */
         ret = get_entries(restore,HACKED_ENTRIES,(unsigned long*)systemcall_table,&nisyscall);
-        printk("%s: ret %d hc %d\n", MODNAME, ret, HACKED_ENTRIES);
-        printk("%s: ennamocoddio\n", MODNAME);
-        
+     
         if (ret != HACKED_ENTRIES){
                 printk("%s: could not hack %d entries (just %d)\n",MODNAME,HACKED_ENTRIES,ret); 
                 return -1;      
         }
-    printk("%s: ennamocoddio\n", MODNAME);
+
 	unprotect_memory();
         
         /* the free entries will point to the new syscalls */

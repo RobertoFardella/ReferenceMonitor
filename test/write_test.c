@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
 
     file_ptr = fopen(argv[1], "w");
     if (file_ptr == NULL) {
-        printf("Errore nell'apertura del file!\n");
+        perror("\nErrore nell'apertura del file!");
         return 0;
     }
     
