@@ -35,10 +35,15 @@ The computation of the cryptographic hash and the writing of the above tuple sho
    ```sh
    git clone https://github.com/Zudel/ReferenceMonitor.git
    ```
-2.  Build and install the module through the main Makefile contained in `ReferenceMonitor` directory passing the password as a parameter, with the following command:
+2.  Build the module through the main directory contained the Makefile, with the following command:
    ```sh
-   make PW=<password>
+   make all
    ```
+   Install it:
+    ```sh
+   sudo make mount
+    ```
+
 
 ### USAGE
 The following commands are available to manage the reference monitor:
