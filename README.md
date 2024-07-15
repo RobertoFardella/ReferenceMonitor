@@ -42,7 +42,7 @@ The computation of the cryptographic hash and the writing of the above tuple sho
 3.  Install it:
     
     ```sh
-sudo make mount
+    sudo make mount
     ```
 
 
