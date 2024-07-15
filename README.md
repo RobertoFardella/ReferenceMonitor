@@ -35,7 +35,7 @@ The computation of the cryptographic hash and the writing of the above tuple sho
    ```sh
    git clone https://github.com/Zudel/ReferenceMonitor.git
    ```
-2.  Build the module through the main directory contained the Makefile, with the following command:
+2.  Build the module from the main directory containing the Makefile using the following command:
    ```sh
    make all
    ```
@@ -43,7 +43,7 @@ The computation of the cryptographic hash and the writing of the above tuple sho
     
     ```sh
 sudo make mount
-```
+    ```
 
 
 ### USAGE
