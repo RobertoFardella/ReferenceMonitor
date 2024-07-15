@@ -39,7 +39,7 @@ The computation of the cryptographic hash and the writing of the above tuple sho
    ```sh
    make all
    ```
-   Install it:
+3.   Install it:
     ```sh
    sudo make mount
     ```
